@@ -1,0 +1,26 @@
+# NOTICE
+
+TomoDesk is distributed under the MIT License (see `LICENSE`).
+
+The application itself is licensed under the MIT License. However, TomoDesk
+depends on third-party open-source libraries that are distributed under their
+own licenses. This file lists the most notable ones; full license texts ship
+with each dependency in your Python environment.
+
+## Third-party dependencies
+
+| Library               | License        | Notes                                             |
+| --------------------- | -------------- | ------------------------------------------------- |
+| PySide6 (Qt for Python) | LGPL-3.0 / GPL-3.0 | Used via dynamic linking; the GUI layer must remain replaceable to stay LGPL-compatible. |
+| ChromaDB              | Apache-2.0     | Vector database for long-term / episodic memory.  |
+| sentence-transformers | Apache-2.0     | Embedding models for semantic search.             |
+| torch                 | BSD-3-Clause   | Backend for embedding models (installed via sentence-transformers). |
+| psutil                | BSD-3-Clause   | System metrics (CPU/RAM/process).                 |
+| python-dotenv         | BSD-3-Clause   | `.env` loading.                                   |
+| PyYAML                | MIT            | Configuration and data files parsing.             |
+| openai                | Apache-2.0     | OpenAI-compatible API client.                     |
+| ollama                | MIT            | Ollama API client.                                |
+| jsonschema            | MIT            | Sprite schema validation.                         |
+| keyring               | MIT            | OS credential storage.                            |
+
+See each dependency's own `LICENSE` file for the exact terms.
