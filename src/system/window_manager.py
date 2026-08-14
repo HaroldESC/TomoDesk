@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 try:
     import pygetwindow as gw
     HAS_PYWINDOW = True
-except ImportError:
+except (ImportError, NotImplementedError):
     HAS_PYWINDOW = False
     logger.warning("pygetwindow not available. Window-sitting disabled.")
 
