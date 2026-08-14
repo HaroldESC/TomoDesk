@@ -11,7 +11,6 @@
 ## Table of Contents
 
 - [About](#about)
-- [Demo](#demo)
 - [Prerequisites & Installation](#prerequisites--installation)
 - [Usage](#usage)
 - [Roadmap](ROADMAP.md)
