@@ -12,7 +12,8 @@ def test_get_active_window_no_pygetwindow():
 
 def test_get_all_windows_empty():
     with patch("src.system.window_manager.HAS_PYWINDOW", True):
-        with patch("src.system.window_manager.gw.getWindowsWithTitle", return_value=[]):
+        with patch("src.system.window_manager.gw") as gw:
+            gw.getWindowsWithTitle.return_value = []
             wm = WindowManager()
             assert wm.get_all_windows() == []
 
