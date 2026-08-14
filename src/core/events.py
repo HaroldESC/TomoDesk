@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 try:
     import pygetwindow as gw
-except ImportError:
+except (ImportError, NotImplementedError):
     gw = None
     logger.warning("pygetwindow not available. Window detection disabled.")
 
