@@ -161,7 +161,7 @@ class _QueryCache:
             if entry is None:
                 return None
             result, timestamp = entry
-            if time.time() - timestamp > self._ttl:
+            if time.time() - timestamp >= self._ttl:
                 del self._cache[key]
                 return None
             return result
