@@ -17,7 +17,7 @@ def test_get_all_windows_empty():
             assert wm.get_all_windows() == []
 
 
-def test_get_taskbar_geometry_no_pygetwindow():
+def test_get_taskbar_geometry_no_pygetwindow(qapp):
     with patch("src.system.window_manager.HAS_PYWINDOW", False):
         wm = WindowManager()
         geo = wm.get_taskbar_geometry()
