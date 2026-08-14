@@ -1,0 +1,179 @@
+import logging
+from pathlib import Path
+from typing import Dict, List, Optional
+
+from PySide6.QtCore import QTimer, Qt
+from PySide6.QtGui import QPixmap, QPainter, QColor, QFont, QPen
+
+from src.gui.sprites.animation_manager import AnimationManager
+from src.gui.sprites.animation_state import AnimationState
+from src.gui.sprites.sprite_loader import SpriteLoader, SpriteLoadError
+
+logger = logging.getLogger(__name__)
+
+
+class SpriteManager:
+    def __init__(self, config: dict, sprite_dir: str = "data/sprites"):
+        self.config = config
+        self.sprite_dir = Path(sprite_dir)
+        self.character_size = config.get("ui", {}).get("character_size", 150)
+
+        self.animation_manager: Optional[AnimationManager] = None
+        self.frame_timer = QTimer()
+        self.frame_timer.timeout.connect(self._on_timer_tick)
+        self._last_tick_time: Optional[float] = None
+
+        self._loader = SpriteLoader(config, sprite_dir)
+
+        self._load_sprite()
+
+        logger.info("SpriteManager initialized")
+
+    def _load_sprite(self):
+        ui_config = self.config.get("ui", {})
+        sprite_cfg = ui_config.get("sprite", {})
+
+        use_custom = sprite_cfg.get("use_custom", False)
+        custom_path = sprite_cfg.get("custom_path", "")
+        active = sprite_cfg.get("active", "default")
+
+        if use_custom and custom_path:
+            sprite_name = Path(custom_path).name
+            sprite_dir = Path(custom_path)
+        else:
+            sprite_name = active
+            sprite_dir = None
+
+        try:
+            sprite_config, frames_cache = self._loader.load_sprite(sprite_name, sprite_dir)
+        except SpriteLoadError as e:
+            logger.error(f"Failed to load sprite '{sprite_name}': {e}")
+            error_pix = self._create_error_pixmap(sprite_name)
+            sprite_config = {
+                "name": sprite_name, "version": "1.0.0",
+                "frame_width": self.character_size,
+                "frame_height": self.character_size,
+                "states": {
+                    "error": {
+                        "type": "simple",
+                        "frames": ["error"],
+                        "frame_durations": [1000],
+                        "loop": True,
+                    }
+                },
+            }
+            frames_cache = {"error": [error_pix]}
+
+        self._scale_frames(frames_cache)
+
+        self.animation_manager = AnimationManager(sprite_config, frames_cache)
+
+        if "error" in frames_cache:
+            self.animation_manager.force_state("error")
+
+    def _create_error_pixmap(self, sprite_name: str) -> QPixmap:
+        pix = QPixmap(self.character_size, self.character_size)
+        pix.fill(QColor(40, 40, 50, 220))
+        p = QPainter(pix)
+        p.setRenderHint(QPainter.Antialiasing)
+
+        p.setPen(QPen(QColor(255, 100, 100)))
+        p.setFont(QFont("Arial", int(self.character_size * 0.08), QFont.Bold))
+        p.drawText(pix.rect(), Qt.AlignCenter,
+                   f"Could not load\n\"{sprite_name}\"")
+
+        p.setPen(QPen(QColor(180, 180, 180)))
+        p.setFont(QFont("Arial", int(self.character_size * 0.04)))
+        r = pix.rect().adjusted(0, int(self.character_size * 0.15), 0, 0)
+        p.drawText(r, Qt.AlignCenter, "Check data/sprites/")
+        p.end()
+        return pix
+
+    def _scale_frames(self, cache: Dict[str, List[QPixmap]]):
+        for key, frames in cache.items():
+            scaled = []
+            for pix in frames:
+                if (pix.width() != self.character_size
+                        or pix.height() != self.character_size):
+                    pix = pix.scaled(self.character_size, self.character_size,
+                                     Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                scaled.append(pix)
+            cache[key] = scaled
+
+    def _on_timer_tick(self):
+        import time
+        now = time.monotonic()
+        if self._last_tick_time is not None:
+            dt_ms = (now - self._last_tick_time) * 1000.0
+            if self.animation_manager:
+                self.animation_manager.update(dt_ms)
+        self._last_tick_time = now
+
+    def set_state(self, state: str, emotion_state: Optional[dict] = None):
+        if self.animation_manager:
+            self.animation_manager.request_state(state, emotion_state)
+            logger.debug(f"Animation state requested: {state}")
+
+    def set_frame_speed(self, multiplier: float):
+        if self.animation_manager:
+            self.animation_manager.set_frame_speed(multiplier)
+
+    def get_current_pixmap(self) -> QPixmap:
+        if not self.animation_manager:
+            return QPixmap(self.character_size, self.character_size)
+        pix = self.animation_manager.get_current_pixmap()
+        show_labels = self.config.get("ui", {}).get("sprite", {}).get("show_frame_labels", False)
+        if show_labels:
+            pix = QPixmap(pix)
+            p = QPainter(pix)
+            p.setRenderHint(QPainter.Antialiasing)
+            p.setPen(QPen(QColor(255, 255, 0)))
+            p.setFont(QFont("Consolas", 9, QFont.Bold))
+            label = f"{self.current_state} [{self.current_frame}]"
+            p.drawText(2, 12, label)
+            p.end()
+        return pix
+
+    @property
+    def current_state(self) -> str:
+        if self.animation_manager:
+            return self.animation_manager.current_state_name
+        return AnimationState.IDLE
+
+    @current_state.setter
+    def current_state(self, value: str):
+        pass
+
+    @property
+    def current_frame(self) -> int:
+        if self.animation_manager:
+            return self.animation_manager.current_frame_index
+        return 0
+
+    @current_frame.setter
+    def current_frame(self, value: int):
+        pass
+
+    def set_character_size(self, size: int) -> None:
+        self.character_size = size
+        old_state = self.current_state
+        self._load_sprite()
+        if self.animation_manager:
+            self.animation_manager.force_state(old_state)
+
+    def start_animation(self):
+        self._last_tick_time = None
+        self.frame_timer.start(16)
+
+    def stop_animation(self):
+        self.frame_timer.stop()
+        self._last_tick_time = None
+
+    @property
+    def frames(self) -> Dict[str, List[QPixmap]]:
+        if self.animation_manager:
+            return getattr(self.animation_manager, "_frames_cache", {})
+        return {}
+
+    def is_animating(self) -> bool:
+        return self.frame_timer.isActive()

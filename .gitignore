@@ -1,0 +1,63 @@
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Python Files
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Databases and generated data
+data/*.db
+data/*.db-shm
+data/*.db-wal
+chroma_db/
+
+# pytest cache
+.pytest_cache/
+.benchmarks/
+
+# Dev changelog (personal reference)
+docs/progress.md
+
+# Logs
+data/*.log
+
+# Sprites (user-downloaded) — default pack ships with app
+data/sprites/*
+!data/sprites/default/
+
+# Personality packs (user-downloaded) — default pack ships with app
+data/personality_packs/*
+!data/personality_packs/default/
+
+# Configuration files with tokens
+.env
+
+# Local config (contains personal settings & keys)
+config.yaml
+
+# Developer instructions (private, not published)
+AGENTS.md
+.agents/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build artifacts (PyInstaller, Nuitka, etc.)
+dist/
+build/
+*.spec
+
+# Coverage / reports
+htmlcov/
+.coverage
+coverage/

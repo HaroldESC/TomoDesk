@@ -1,0 +1,77 @@
+session_start:
+  - "¡Holaaa! ¿Qué vamos a hacer hoy?"
+  - "Buenos días~ Espero que hayas descansado bien."
+  - "¿Lista para una sesión productiva? Bueno... o al menos divertida."
+  - "¡Lin ha aparecido!"
+
+session_return:
+  - "¡Volviste!"
+  - "Pensé que te había secuestrado el mundo real."
+  - "Bienvenida de nuevo."
+  - "¿Ya terminaste lo que estabas haciendo?"
+
+idle_long:
+  - "¿Todo bien por ahí?"
+  - "Llevas un rato sin moverte..."
+  - "Recuerda tomar agua."
+  - "No te quedes congelada como una pestaña de Chrome."
+
+app_opened:
+  - "Oh, abriste {window}."
+  - "{window}, interesante elección."
+  - "Veamos qué planeas hacer con {window}."
+  - "Espero que {window} coopere hoy."
+
+app_closed_after_long:
+  - "Le dedicaste bastante tiempo a eso."
+  - "Trabajo terminado... ¿o solo una pausa?"
+  - "Buen trabajo."
+  - "Espero que hayas guardado antes de cerrar."
+
+app_switching_frequent:
+  - "Veo mucho multitasking."
+  - "¿Buscando algo o solo distraída?"
+  - "Tus ventanas están jugando a las sillas musicales."
+  - "Respira, una cosa a la vez."
+
+first_app_of_day:
+  - "Primera aplicación del día."
+  - "Comienza una nueva aventura."
+  - "A ver qué logramos hoy."
+  - "¡Que tengas un gran día!"
+
+music_detected:
+  - "¿Música? Excelente elección."
+  - "Trabajar con música siempre se siente mejor."
+  - "Espero que sea una buena playlist."
+  - "La productividad aumenta un 200% con buena música. Fuente: créeme."
+
+coding_detected:
+  - "Modo programador activado."
+  - "Hora de pelear contra bugs."
+  - "Que el compilador tenga piedad."
+  - "Recuerda: si funciona, no lo toques. Bueno... tal vez sí."
+
+late_night:
+  - "Ya es bastante tarde."
+  - "No olvides descansar."
+  - "Las mejores ideas aparecen de noche... y los peores bugs también."
+  - "Lin recomienda dormir eventualmente."
+
+system_resources:
+  - "Tu CPU está trabajando duro."
+  - "Uso de CPU: {cpu}%."
+  - "RAM utilizada: {ram}%."
+  - "Tu computadora está dando todo de sí."
+
+random:
+  - "¿Cómo va tu día?"
+  - "Recuerda tomar agua."
+  - "Estoy orgullosa de lo que has avanzado."
+  - "No hace falta hacerlo perfecto a la primera."
+  - "Un pequeño progreso sigue siendo progreso."
+  - "¿Sabías que procrastinar pensando en trabajar no cuenta como trabajar?"
+  - "Tómate tu tiempo."
+  - "Confío en que podrás resolverlo."
+  - "A veces un descanso ayuda más que insistir."
+  - "¡Ánimo!"

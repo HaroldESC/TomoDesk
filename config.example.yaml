@@ -1,0 +1,73 @@
+database:
+  sqlite_path: ./data/tomodesk.db
+llm:
+  endpoint: http://localhost:11434/v1
+  max_requests_per_minute: 60
+  model: llama3.2:1b
+  provider: ollama
+  timeout: 60
+logs:
+  level: INFO
+memory:
+  auto_session_summary: false
+  chroma_persist_path: ./chroma_db
+  embedding_model: all-MiniLM-L6-v2
+  episodic_auto_threshold: 0.6
+  episodic_message_threshold: 15
+  include_notes: true
+  long_term_enabled: true
+  max_context_length: 50
+  max_short_term_messages: 20
+  medium_term_enabled: true
+  short_term_enabled: true
+modes:
+  comment_probability: 0.1
+  max_comments_per_hour: 2
+  proactive_comments: false
+  proactive_cooldown_seconds: 1800
+paths:
+  comments_yaml: data/comments.yaml
+  locales: data/locales
+personality:
+  initial_closeness: 0.2
+  initial_connection: 0.47
+  initial_curiosity: 0.6
+  initial_energy: 0.8
+  initial_happiness: 0.62
+  name: TomoDesk
+  traits: friendly, curious, helpful
+personality_packs:
+  active_pack: Default
+  directory: data/personality_packs
+  enabled: true
+privacy:
+  consent_asked: false
+  monitor_active_window: true
+ui:
+  bubble_fade_delay_ms: 4000
+  bubble_max_lines: 5
+  bubble_style: comic
+  bubble_typewriter_interval_ms: 30
+  character_size: 143
+  hints:
+    delay_ms: 2000
+    enabled: true
+  language: en
+  overlay_default_position: bottom-right
+  overlay_enabled: true
+  overlay_opacity: 1.0
+  sleep_low_energy_enabled: true
+  sleep_timeout_seconds: 300
+  sprite:
+    active: default
+    custom_path: ''
+    show_frame_labels: false
+    use_custom: false
+  theme: dark
+window_sitting:
+  enabled: true
+  fallback_position: bottom-right
+  maximized_behavior: 1
+  minimized_behavior: 0
+  target: active_window
+  transition_speed: 0.5

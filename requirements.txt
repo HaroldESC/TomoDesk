@@ -1,0 +1,34 @@
+# Requires Python >= 3.12
+# Core
+python-dotenv==1.0.1
+
+# Configuration & Logging
+PyYAML==6.0.2
+
+# Database
+chromadb==0.5.20
+sentence-transformers==3.3.1
+torch==2.12.0  # transitiva de sentence-transformers/chromadb
+
+# OS interaction
+psutil==6.1.0
+pygetwindow==0.0.9
+
+# GUI (needed for Subphase 1.8, install now)
+PySide6==6.11.1
+
+# LLM (needed for Subphase 1.2)
+ollama==0.4.7
+openai==2.41.1
+
+# Sprite schema validation (Subphase 2.9)
+jsonschema==4.23.0
+
+# Credential storage (OS keyring)
+keyring>=25.0.0
+
+# Testing
+pytest==8.3.4
+pytest-mock==3.14.0
+pytest-qt==4.4.0
+pytest-benchmark==5.2.3
