@@ -6,7 +6,7 @@
 ![Python](https://img.shields.io/badge/python-3.12%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Status](https://img.shields.io/badge/status-v1.0.0--release-yellow)
-![CI](https://github.com/Harold-ESC/TomoDesk/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/HaroldESC/TomoDesk/actions/workflows/ci.yml/badge.svg)
 
 ## Table of Contents
 
@@ -49,7 +49,7 @@ TomoDesk is a desktop companion application that lives in your system tray and d
 ### Setup
 
 ```bash
-git clone https://github.com/Harold-ESC/TomoDesk.git
+git clone https://github.com/HaroldESC/TomoDesk.git
 cd TomoDesk
 python -m venv venv
 .\venv\Scripts\activate   # Windows
