@@ -1,10 +1,9 @@
 # Rediseño: Sistema de Animación, Sprite Packs y Context Packs
 
-**Estado:** En implementación. **F1-F5 completadas** (intents, modelos, loader
-`sprite-pack-v1`, `AnimationController`, sprite default migrado, integración GUI,
-Context Packs + `VisualStateResolver` con detección de ventana activa, y migración de
-`PersonalityPackManager` a JSON con fallback legacy YAML).
-Pendientes: F6 (cierre).
+**Estado:** Completado. **F1-F6 finalizadas** (intents, modelos, loader `sprite-pack-v1`,
+`AnimationController`, sprite default migrado, integración GUI, Context Packs +
+`VisualStateResolver`, migración de `PersonalityPackManager` a JSON, y cierre con docs
+actualizadas y suite completa en verde).
 **Versión objetivo:** `2.0.0` (rompe compatibilidad de formato de sprites).
 **Fecha:** 2026-08-17
 

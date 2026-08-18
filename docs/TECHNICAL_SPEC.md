@@ -720,26 +720,31 @@ window_sitting:
 
 ```
 MyPersonality/
-  manifest.yaml           # metadata
-  phrases/                # YAML phrases per trigger type
-    greeting.yaml
-    idle.yaml
-    proactive.yaml
+  manifest.json           # metadata (personality-pack-v1)
+  phrases/                # JSON phrases per trigger type
+    greeting.json
+    idle.json
+    proactive.json
   sounds/                 # optional: .wav, .ogg
     notification.wav
   sprites/                # optional (reserved)
-  emotions_mapping.yaml   # optional (reserved)
 ```
+
+Legacy packs using `manifest.yaml` + `phrases/*.yaml` are still loaded as a fallback.
 
 ### Manifest
 
-```yaml
-name: "Tomo Feliz"
-author: "UsuarioX"
-version: "1.0"
-min_tomodesk_version: "0.2.0"
-type: "personality"       # personality | sound_pack | sprite_pack
-replaces: []              # optional: overrides default phrases
+```json
+{
+  "id": "friendly",
+  "name": "Tomo Feliz",
+  "author": "UsuarioX",
+  "version": "1.0",
+  "format": "personality-pack-v1",
+  "min_tomodesk_version": "0.2.0",
+  "type": "personality",
+  "replaces": []
+}
 ```
 
 ### Integration
@@ -1041,7 +1046,7 @@ Disabled when `max_requests_per_minute <= 0`.
 the pack loader:
 
 - Max size 50 MB (`MAX_PACK_ZIP_SIZE`).
-- Must contain `manifest.yaml`.
+- Must contain `manifest.json` or `manifest.yaml`.
 - Rejects path traversal (`..`, absolute paths, backslash separators) via `is_safe_zip_member`.
 
 Pack names loaded from manifests are sanitized (`_safe_pack_name`): control characters stripped,

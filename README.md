@@ -160,9 +160,9 @@ src/
       hint_manager.py     Optional visual hints and tooltips
       window_sitting.py   Window-sitting controller
     sprites/
-      sprite_manager.py   Animation state machine
-      sprite_loader.py    JSON Schema-validated sprite loader
-      animation_manager.py Data-driven animation engine
+      sprite_manager.py   Sprite manager + VisualStateResolver bridge
+      sprite_loader.py    JSON Schema-validated sprite pack loader
+      animation_controller.py  Clip player (intents, modes, overlays)
     styles/
       styles.py           UI design tokens and QSS (light/dark)
 ```

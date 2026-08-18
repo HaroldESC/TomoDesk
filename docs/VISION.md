@@ -191,7 +191,7 @@ El personaje reacciona a eventos del sistema y del usuario de forma espontánea,
 |---|---|
 | **Thread safety** | Locks en DB y estado; signals Qt para GUI; workers en threads daemon |
 | **Modularidad** | 7 paquetes independientes (config, core, gui, llm, memory, personality, system) |
-| **Animaciones** | Motor data-driven con JSON Schema; cualquier sprite con sprite.json funciona |
+| **Animaciones** | Motor data-driven con JSON Schema; intents + clips; cualquier sprite con manifest.json funciona |
 | **Personality Packs** | Carga desde ZIP/directorio; frases con prioridad; instalación drag-and-drop |
 | **i18n** | Sistema completo EN/ES con detección automática y placeholders |
 | **Tests** | 297+ tests con pytest, MockChroma, mock_i18n, fixtures centralizadas |
