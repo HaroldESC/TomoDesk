@@ -339,7 +339,9 @@ class MainWindow(QMainWindow):
             self._settings_dialog.raise_()
             self._settings_dialog.activateWindow()
             return
-        dialog = SettingsDialog(self.config, self.proactive_engine, self, self.i18n, styles=self._styles)
+        dialog = SettingsDialog(self.config, self.proactive_engine, self, self.i18n,
+                                styles=self._styles,
+                                context_manager=self.overlay.context_manager if self.overlay else None)
         dialog.sprite_changed.connect(self.reload_sprite)
         dialog.language_changed.connect(self._apply_language)
         dialog.finished.connect(lambda: self._on_settings_closed(dialog))

@@ -36,6 +36,9 @@ _NESTED_DEFAULTS: dict[str, dict] = {
         "name": "TomoDesk",
         "traits": "friendly, curious, helpful",
     },
+    "context": {
+        "directory": "data/context_packs",
+    },
 }
 
 

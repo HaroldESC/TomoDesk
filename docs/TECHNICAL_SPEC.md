@@ -102,7 +102,7 @@ src/
 │   ├── windows/         # Top-level windows
 │   │   ├── overlay_window.py    # Transparent character overlay
 │   │   ├── main_window.py       # Chat window
-│   │   ├── settings_dialog.py   # 5-tab settings
+│   │   ├── settings_dialog.py   # Sidebar settings + search
 │   │   ├── notes_dialog.py      # Note CRUD
 │   │   ├── reminders_dialog.py  # Reminder management
 │   │   └── memories_dialog.py   # Episodic memory browser
@@ -612,7 +612,12 @@ los eventos de contexto recibidos vía `push_event`.
 - Theme toggle in Settings (dark/light) propagates to all windows
 
 ### Dialogs (src/gui/windows/)
-- **Settings**: 5 tabs (Apariencia, Personaje, Mente, Comportamiento, Avanzado) with scroll areas
+- **Settings**: sidebar navigation (`QListWidget` + `QStackedWidget`) with a search box that filters
+  groups/pages; six pages — Apariencia, **Packs**, Personaje, Comportamiento, Mente, Avanzado — each
+  with a scroll area. Packs groups Sprite, Personality Packs and **Context Packs** (directory, checkable
+  active-pack list, reload, delete). Settings receives the overlay's `ContextPackManager` (via
+  `main_window._open_settings`) so saving applies active packs live; `OverlayWindow` reads
+  `context.directory` (default `data/context_packs`).
 - **Notes**: CRUD, list view
 - **Reminders**: Create/cancel, list view
 - **Memories**: List/search/delete episodic memories

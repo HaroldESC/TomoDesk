@@ -72,5 +72,6 @@ window_sitting:
   target: active_window
   transition_speed: 0.5
 context:
+  directory: data/context_packs
   active_packs:
     - vscode

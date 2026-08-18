@@ -64,7 +64,9 @@ class OverlayWindow(QWidget):
         self.dragging = False
         self.drag_position = QPoint()
 
-        self.context_manager = ContextPackManager(config, "data/context_packs")
+        self.context_manager = ContextPackManager(
+            config, config.get("context", {}).get("directory", "data/context_packs")
+        )
         self.resolver = VisualStateResolver(self.context_manager)
         self.sprite_manager = SpriteManager(config, "data/sprites", resolver=self.resolver)
         self.sprite_manager.frame_timer.setParent(self)

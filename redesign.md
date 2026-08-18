@@ -708,6 +708,8 @@ futuras, sin tocar sprites ni personalidad):
   sesiones posteriores, idealmente con subagentes por fase).
 - Nuevos assets gráficos para el sprite `default`.
 - UI de Settings para gestionar Context Packs (se añadirá cuando el motor exista).
+  **HECHO**: la página *Packs* de Ajustes (rediseño de Ajustes) gestiona Context Packs
+  (directorio, activar/desactivar, recargar, eliminar) con aplicación en vivo.
 
 ---
 

@@ -483,6 +483,58 @@ QSlider::sub-page:horizontal {{
     border-radius: 2px;
 }}
 
+/* ── Ajustes: navegación y búsqueda ──────────────────────────────── */
+QWidget#settings_sidebar {{
+    background-color: {c["bg_window"]};
+    border-right: 1px solid {c["border"]};
+}}
+
+QListWidget#settings_nav {{
+    background: transparent;
+    border: none;
+    outline: none;
+    padding: 4px;
+}}
+QListWidget#settings_nav::item {{
+    padding: 9px 12px;
+    border-radius: 8px;
+    color: {c["text_secondary"]};
+    border: none;
+}}
+QListWidget#settings_nav::item:selected {{
+    background-color: {c["accent_light"]};
+    color: {c["accent_pressed"]};
+    font-weight: 600;
+}}
+QListWidget#settings_nav::item:hover:!selected {{
+    background-color: {c["bg_hover"]};
+}}
+
+QLineEdit#search_field {{
+    background-color: {c["bg_input"]};
+    border: 1.5px solid {c["border"]};
+    border-radius: 8px;
+    padding: 7px 12px;
+    font-size: 13px;
+}}
+QLineEdit#search_field:focus {{
+    border-color: {c["border_focus"]};
+    background-color: {c["bg_surface"]};
+}}
+
+QLabel#page_heading {{
+    font-size: 16px;
+    font-weight: 700;
+    color: {c["text_primary"]};
+    padding: 2px 0 10px 0;
+}}
+
+QLabel#no_results {{
+    color: {c["text_muted"]};
+    font-size: 13px;
+    padding: 6px 2px;
+}}
+
 /* ── Tooltip ─────────────────────────────────────────────────────── */
 QToolTip {{
     background-color: {c["tooltip_bg"]};

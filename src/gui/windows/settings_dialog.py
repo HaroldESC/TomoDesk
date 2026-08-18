@@ -12,11 +12,12 @@ from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFileDialog,
     QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget,
     QMessageBox, QPushButton, QScrollArea, QSlider, QSpinBox,
-    QTabWidget, QTextEdit, QVBoxLayout, QWidget,
+    QStackedWidget, QTextEdit, QVBoxLayout, QWidget, QListWidgetItem,
 )
 
 from src.config.config import get_config_path, save_config, validate_llm_endpoint
 from src.config.credentials import CredentialManager
+from src.context.context_pack import ContextPackManager
 from src.gui.sprites.sprite_loader import SpriteLoader
 from src.gui.styles.styles import get_style_set
 
@@ -42,7 +43,8 @@ class SettingsDialog(QDialog):
     sprite_changed = Signal(str)
     language_changed = Signal()
 
-    def __init__(self, config, proactive_engine=None, parent=None, i18n=None, styles=None):
+    def __init__(self, config, proactive_engine=None, parent=None, i18n=None, styles=None,
+                 context_manager=None):
         super().__init__(parent)
         self.config = config
         self.proactive_engine = proactive_engine
@@ -50,9 +52,12 @@ class SettingsDialog(QDialog):
         if styles is None:
             styles = get_style_set("light")
         self.setWindowTitle(self.i18n.t("dialogs.settings.title"))
-        self.setMinimumSize(740, 580)
+        self.setMinimumSize(760, 580)
         self.setStyleSheet(styles["dialog"])
         self._sprite_loader = SpriteLoader(config)
+        self.context_manager = context_manager or ContextPackManager(
+            config, config.get("context", {}).get("directory", "data/context_packs")
+        )
         self._dirty = False
         self._setup_ui()
         self._connect_dirty_tracking()
@@ -70,10 +75,23 @@ class SettingsDialog(QDialog):
 
     def _add_group(self, layout, title_key, controls_builder):
         group = QGroupBox(self.i18n.t(title_key))
+        group.setProperty("_search_text", self.i18n.t(title_key).lower())
         gl = QVBoxLayout(group)
         gl.setContentsMargins(12, 8, 12, 8)
         controls_builder(gl)
         layout.addWidget(group)
+
+    def _make_page(self, nav_key):
+        page = QWidget()
+        page.setProperty("_search_text", self.i18n.t(nav_key).lower())
+        page_layout = QVBoxLayout(page)
+        heading = QLabel(self.i18n.t(nav_key))
+        heading.setObjectName("page_heading")
+        page_layout.addWidget(heading)
+        body = QWidget()
+        body_layout = QVBoxLayout(body)
+        page_layout.addWidget(self._scrollable(body), 1)
+        return page, body_layout
 
     def _slider_with_label(self, lo, hi, val, suffix="%"):
         s = QSlider(Qt.Horizontal)
@@ -102,14 +120,11 @@ class SettingsDialog(QDialog):
 
     # ── 1. Apariencia ────────────────────────────────────────────────────────
 
-    def _build_appearance_tab(self):
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
+    def _build_appearance_page(self, layout):
         self._add_group(layout, "dialogs.settings.appearance_theme", self._build_appearance_theme)
         self._add_group(layout, "dialogs.settings.appearance_bubble", self._build_appearance_bubble)
         self._add_group(layout, "dialogs.settings.appearance_hints", self._build_appearance_hints)
         layout.addStretch()
-        return self._scrollable(tab)
 
     def _build_appearance_theme(self, layout):
         ui = self.config.get("ui", {})
@@ -199,18 +214,21 @@ class SettingsDialog(QDialog):
     def _on_hints_toggled(self, enabled):
         self.ui_hints_delay.setEnabled(enabled)
 
-    # ── 2. Personaje ─────────────────────────────────────────────────────────
+    # ── 2. Personaje (identidad) ─────────────────────────────────────────────
 
-    def _build_character_tab(self):
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-
-        self._add_group(layout, "dialogs.settings.character_sprite", self._build_character_sprite)
-        self._add_group(layout, "dialogs.settings.character_personality", self._build_character_personality)
+    def _build_character_page(self, layout):
+        self._add_group(layout, "dialogs.settings.character_personality",
+                        self._build_character_personality)
         self._add_group(layout, "dialogs.settings.character_mood", self._build_character_mood)
-        self._add_group(layout, "dialogs.settings.character_packs", self._build_character_packs)
         layout.addStretch()
-        return self._scrollable(tab)
+
+    # ── 2b. Packs (Sprite + Personalidad + Contexto) ───────────────────────
+
+    def _build_packs_page(self, layout):
+        self._add_group(layout, "dialogs.settings.character_sprite", self._build_character_sprite)
+        self._add_group(layout, "dialogs.settings.character_packs", self._build_character_packs)
+        self._add_group(layout, "dialogs.settings.packs_context", self._build_context_packs)
+        layout.addStretch()
 
     def _build_character_sprite(self, layout):
         sprite_cfg = self.config.get("ui", {}).get("sprite", {})
@@ -351,34 +369,143 @@ class SettingsDialog(QDialog):
                 elif entry.is_file() and entry.suffix == ".zip":
                     self.pack_active.addItem(entry.stem)
 
+    # ── 2c. Context Packs ─────────────────────────────────────────────────
+
+    def _build_context_packs(self, layout):
+        context = self.config.setdefault("context", {})
+
+        path_row = QHBoxLayout()
+        self.ctx_directory = QLineEdit(context.get("directory", "data/context_packs"))
+        path_row.addWidget(self.ctx_directory, stretch=1)
+        browse_btn = QPushButton(self.i18n.t("dialogs.settings.browse"))
+        browse_btn.clicked.connect(self._on_browse_context_dir)
+        path_row.addWidget(browse_btn)
+        path_widget = QWidget()
+        path_widget.setLayout(path_row)
+        self._add_row(layout, self.i18n.t("dialogs.settings.context_directory"), path_widget)
+
+        self.context_pack_list = QListWidget()
+        self.context_pack_list.setMinimumHeight(140)
+        self._populate_context_list()
+        self.context_pack_list.itemChanged.connect(self._mark_dirty)
+        self._add_row(layout, self.i18n.t("dialogs.settings.context_pack_list"),
+                      self.context_pack_list)
+
+        btn_row = QHBoxLayout()
+        reload_btn = QPushButton(self.i18n.t("dialogs.settings.context_reload"))
+        reload_btn.clicked.connect(self._on_reload_context_packs)
+        btn_row.addWidget(reload_btn)
+
+        self.context_pack_delete_btn = QPushButton(self.i18n.t("dialogs.settings.context_delete"))
+        self.context_pack_delete_btn.setEnabled(False)
+        self.context_pack_delete_btn.clicked.connect(self._on_delete_context_pack)
+        self.context_pack_list.currentItemChanged.connect(
+            lambda cur, prev: self.context_pack_delete_btn.setEnabled(cur is not None)
+        )
+        btn_row.addWidget(self.context_pack_delete_btn)
+
+        layout.addLayout(btn_row)
+
+    def _populate_context_list(self):
+        self.context_pack_list.clear()
+        for pack in self.context_manager.list_packs():
+            text = pack["name"]
+            if pack.get("version"):
+                text += f" (v{pack['version']})"
+            item = QListWidgetItem(text)
+            item.setData(Qt.UserRole, pack["id"])
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            item.setCheckState(Qt.Checked if pack["active"] else Qt.Unchecked)
+            self.context_pack_list.addItem(item)
+
+    def _checked_context_ids(self):
+        ids = []
+        for i in range(self.context_pack_list.count()):
+            item = self.context_pack_list.item(i)
+            if item.checkState() == Qt.Checked:
+                ids.append(item.data(Qt.UserRole))
+        return ids
+
+    def _on_browse_context_dir(self):
+        path = QFileDialog.getExistingDirectory(
+            self, self.i18n.t("dialogs.settings.context_directory"),
+            self.ctx_directory.text(),
+        )
+        if path:
+            self.ctx_directory.setText(path)
+            self._on_reload_context_packs()
+
+    def _on_reload_context_packs(self):
+        self.context_manager.packs_dir = Path(self.ctx_directory.text().strip())
+        self.context_manager.scan_packs()
+        self._populate_context_list()
+
+    def _on_delete_context_pack(self):
+        item = self.context_pack_list.currentItem()
+        if not item:
+            return
+        pack_id = item.data(Qt.UserRole)
+        name = item.text()
+        reply = QMessageBox.question(
+            self,
+            self.i18n.t("dialogs.settings.confirm_title"),
+            self.i18n.t("dialogs.settings.context_delete_confirm", name=name),
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        pack = self.context_manager._packs.get(pack_id)
+        if not pack:
+            logger.warning(f"Context pack '{pack_id}' not found in manager")
+            return
+        try:
+            path = pack.path
+            if path.suffix == ".zip":
+                path.unlink()
+            elif path.is_dir():
+                shutil.rmtree(path)
+            else:
+                logger.warning(f"Unknown context pack path type: {path}")
+                return
+            logger.info(f"Deleted context pack: {name}")
+            self.context_manager.scan_packs()
+            self._populate_context_list()
+            self.context_pack_delete_btn.setEnabled(False)
+        except Exception as e:
+            logger.error(f"Failed to delete context pack '{name}': {e}")
+            QMessageBox.warning(
+                self,
+                self.i18n.t("dialogs.settings.confirm_title"),
+                str(e),
+            )
+
     # ── 3. Mente ─────────────────────────────────────────────────────────────
 
-    def _build_mind_tab(self):
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-
+    def _build_mind_page(self, layout):
         self._add_group(layout, "dialogs.settings.mind_llm", self._build_mind_llm)
 
         mg = QGroupBox(self.i18n.t("dialogs.settings.memory_general"))
+        mg.setProperty("_search_text", self.i18n.t("dialogs.settings.memory_general").lower())
         mgl = QVBoxLayout(mg)
         mgl.setContentsMargins(12, 8, 12, 8)
         self._build_memory_general(mgl)
         layout.addWidget(mg)
 
         mc = QGroupBox(self.i18n.t("dialogs.settings.memory_chroma"))
+        mc.setProperty("_search_text", self.i18n.t("dialogs.settings.memory_chroma").lower())
         mcl = QVBoxLayout(mc)
         mcl.setContentsMargins(12, 8, 12, 8)
         self._build_memory_chroma(mcl)
         layout.addWidget(mc)
 
         me = QGroupBox(self.i18n.t("dialogs.settings.memory_episodic"))
+        me.setProperty("_search_text", self.i18n.t("dialogs.settings.memory_episodic").lower())
         mel = QVBoxLayout(me)
         mel.setContentsMargins(12, 8, 12, 8)
         self._build_memory_episodic(mel)
         layout.addWidget(me)
 
         layout.addStretch()
-        return self._scrollable(tab)
 
     def _build_mind_llm(self, layout):
         llm = self.config.get("llm", {})
@@ -474,16 +601,12 @@ class SettingsDialog(QDialog):
 
     # ── 4. Comportamiento ────────────────────────────────────────────────────
 
-    def _build_behavior_tab(self):
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-
+    def _build_behavior_page(self, layout):
         self._add_group(layout, "dialogs.settings.behavior_proactive", self._build_behavior_proactive)
         self._add_group(layout, "dialogs.settings.behavior_sleep", self._build_behavior_sleep)
         self._add_group(layout, "dialogs.settings.behavior_modes", self._build_behavior_modes)
         self._add_group(layout, "dialogs.settings.privacy_group", self._build_behavior_privacy)
         layout.addStretch()
-        return self._scrollable(tab)
 
     def _build_behavior_proactive(self, layout):
         modes = self.config.get("modes", {})
@@ -548,16 +671,12 @@ class SettingsDialog(QDialog):
 
     # ── 5. Avanzado ──────────────────────────────────────────────────────────
 
-    def _build_advanced_tab(self):
-        tab = QWidget()
-        layout = QVBoxLayout(tab)
-
+    def _build_advanced_page(self, layout):
         self._add_group(layout, "dialogs.settings.advanced_sitting", self._build_advanced_sitting)
         self._add_group(layout, "dialogs.settings.advanced_database", self._build_advanced_database)
         self._add_group(layout, "dialogs.settings.advanced_logs", self._build_advanced_logs)
         self._add_group(layout, "dialogs.settings.advanced_about", self._build_advanced_about)
         layout.addStretch()
-        return self._scrollable(tab)
 
     def _build_advanced_sitting(self, layout):
         ws = self.config.get("window_sitting", {})
@@ -876,14 +995,47 @@ class SettingsDialog(QDialog):
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
 
-        tabs = QTabWidget()
-        tabs.addTab(self._build_appearance_tab(), self.i18n.t("dialogs.settings.tab_appearance"))
-        tabs.addTab(self._build_character_tab(), self.i18n.t("dialogs.settings.tab_character"))
-        tabs.addTab(self._build_mind_tab(), self.i18n.t("dialogs.settings.tab_mind"))
-        tabs.addTab(self._build_behavior_tab(), self.i18n.t("dialogs.settings.tab_behavior"))
-        tabs.addTab(self._build_advanced_tab(), self.i18n.t("dialogs.settings.tab_advanced"))
-        layout.addWidget(tabs)
+        self._search_field = QLineEdit()
+        self._search_field.setObjectName("search_field")
+        self._search_field.setPlaceholderText(self.i18n.t("dialogs.settings.search_placeholder"))
+        self._search_field.textChanged.connect(self._apply_search)
+        layout.addWidget(self._search_field)
+
+        self._no_results_label = QLabel(self.i18n.t("dialogs.settings.no_results"))
+        self._no_results_label.setObjectName("no_results")
+        self._no_results_label.hide()
+        layout.addWidget(self._no_results_label)
+
+        split = QHBoxLayout()
+
+        sidebar = QWidget()
+        sidebar.setObjectName("settings_sidebar")
+        nav_layout = QVBoxLayout(sidebar)
+        nav_layout.setContentsMargins(4, 4, 4, 4)
+        self._nav = QListWidget()
+        self._nav.setObjectName("settings_nav")
+        self._nav.setFixedWidth(170)
+        self._nav.setFocusPolicy(Qt.NoFocus)
+        nav_layout.addWidget(self._nav)
+        nav_layout.addStretch()
+        split.addWidget(sidebar, 0)
+
+        self._stack = QStackedWidget()
+        split.addWidget(self._stack, 1)
+        layout.addLayout(split, 1)
+
+        self._pages = []
+        self._add_nav_page("dialogs.settings.tab_appearance", self._build_appearance_page)
+        self._add_nav_page("dialogs.settings.tab_packs", self._build_packs_page)
+        self._add_nav_page("dialogs.settings.tab_character", self._build_character_page)
+        self._add_nav_page("dialogs.settings.tab_behavior", self._build_behavior_page)
+        self._add_nav_page("dialogs.settings.tab_mind", self._build_mind_page)
+        self._add_nav_page("dialogs.settings.tab_advanced", self._build_advanced_page)
+
+        self._nav.currentRowChanged.connect(self._stack.setCurrentIndex)
+        self._nav.setCurrentRow(0)
 
         btn_layout = QHBoxLayout()
         save_btn = QPushButton(self.i18n.t("dialogs.settings.save"))
@@ -897,6 +1049,42 @@ class SettingsDialog(QDialog):
         btn_layout.addWidget(self._close_btn)
 
         layout.addLayout(btn_layout)
+
+    def _add_nav_page(self, nav_key, builder):
+        page, body_layout = self._make_page(nav_key)
+        builder(body_layout)
+        self._pages.append(page)
+        self._stack.addWidget(page)
+        self._nav.addItem(self.i18n.t(nav_key))
+
+    def _apply_search(self, text):
+        query = text.strip().lower()
+        current_row = self._nav.currentRow()
+        any_visible = False
+        for idx, page in enumerate(self._pages):
+            page_text = page.property("_search_text") or ""
+            page_match = bool(query) and query in page_text
+            groups = page.findChildren(QGroupBox)
+            group_visible = 0
+            for group in groups:
+                group_text = group.property("_search_text") or ""
+                matches = (not query) or page_match or query in group_text
+                group.setVisible(matches)
+                if matches:
+                    group_visible += 1
+            visible = (not query) or page_match or group_visible > 0
+            item = self._nav.item(idx)
+            item.setHidden(not visible)
+            if visible:
+                any_visible = True
+        self._no_results_label.setVisible(bool(query) and not any_visible)
+        if current_row >= 0:
+            current = self._nav.item(current_row)
+            if current.isHidden():
+                for idx in range(self._nav.count()):
+                    if not self._nav.item(idx).isHidden():
+                        self._nav.setCurrentRow(idx)
+                        break
 
     # ── dirty tracking ──────────────────────────────────────────────────────
 
@@ -933,6 +1121,7 @@ class SettingsDialog(QDialog):
             return
         self._save_behavior()
         self._save_advanced()
+        self._save_context()
 
         save_config(self.config, get_config_path())
 
@@ -1066,6 +1255,14 @@ class SettingsDialog(QDialog):
 
         logs = self.config.setdefault("logs", {})
         logs["level"] = self.log_level.currentText()
+
+    def _save_context(self):
+        context = self.config.setdefault("context", {})
+        directory = self.ctx_directory.text().strip() or "data/context_packs"
+        context["directory"] = directory
+        self.context_manager.packs_dir = Path(directory)
+        self.context_manager.scan_packs()
+        self.context_manager.set_active_packs(self._checked_context_ids())
 
     # ── theme / reload ───────────────────────────────────────────────────────
 
