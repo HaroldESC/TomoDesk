@@ -1,8 +1,9 @@
 # Rediseño: Sistema de Animación, Sprite Packs y Context Packs
 
-**Estado:** En implementación. **F1, F2 y F3 completadas** (catálogo de intents, modelos,
-loader `sprite-pack-v1`, `AnimationController`, sprite default migrado, integración GUI).
-Pendientes: F4 (Context Packs + `VisualStateResolver`), F5 (Personality JSON), F6 (cierre).
+**Estado:** En implementación. **F1-F4 completadas** (intents, modelos, loader
+`sprite-pack-v1`, `AnimationController`, sprite default migrado, integración GUI,
+Context Packs + `VisualStateResolver` con detección de ventana activa).
+Pendientes: F5 (Personality JSON), F6 (cierre).
 **Versión objetivo:** `2.0.0` (rompe compatibilidad de formato de sprites).
 **Fecha:** 2026-08-17
 

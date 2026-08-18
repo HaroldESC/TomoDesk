@@ -29,6 +29,11 @@ data/sprites/*
 !data/sprites/default/
 !data/sprites/schema.json
 
+# Context packs (user-downloaded) — vscode pack ships with app
+data/context_packs/*
+!data/context_packs/vscode/
+!data/context_packs/schema.json
+
 # Personality packs (user-downloaded) — default pack ships with app
 data/personality_packs/*
 !data/personality_packs/default/

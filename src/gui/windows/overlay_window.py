@@ -10,7 +10,9 @@ from PySide6.QtGui import QPainter, QPaintEvent, QGuiApplication, QCursor, QWhee
 from PySide6.QtWidgets import QWidget, QApplication, QMenu
 
 from src.config.config import get_config_path
+from src.context.context_pack import ContextPackManager
 from src.core.intents import VisualIntent
+from src.core.visual_state_resolver import VisualStateResolver
 from src.gui.styles.styles import get_style_set
 from src.gui.sprites.sprite_manager import SpriteManager
 from src.gui.widgets.speech_bubble import SpeechBubble
@@ -62,7 +64,9 @@ class OverlayWindow(QWidget):
         self.dragging = False
         self.drag_position = QPoint()
 
-        self.sprite_manager = SpriteManager(config, "data/sprites")
+        self.context_manager = ContextPackManager(config, "data/context_packs")
+        self.resolver = VisualStateResolver(self.context_manager)
+        self.sprite_manager = SpriteManager(config, "data/sprites", resolver=self.resolver)
         self.sprite_manager.frame_timer.setParent(self)
         self._last_sprite_key = (None, None)
         def _on_sprite_tick():
@@ -118,6 +122,11 @@ class OverlayWindow(QWidget):
         self._sleep_check_timer = QTimer(self)
         self._sleep_check_timer.timeout.connect(self._check_sleep)
         self._sleep_check_timer.start(3000)
+
+        self._last_context_window = None
+        self._context_timer = QTimer(self)
+        self._context_timer.timeout.connect(self._check_app_context)
+        self._context_timer.start(2000)
 
         self._bubble_text_signal.connect(self.show_bubble_text)
         self._bubble_thinking_signal.connect(self.show_bubble_thinking)
@@ -473,6 +482,20 @@ class OverlayWindow(QWidget):
             msg = self.i18n.t("status.sleeping",
                               default="Zzz... falling asleep... 💤")
         self.show_bubble_text(msg, reset_timer=False)
+
+    def _check_app_context(self):
+        if self._event_monitor is None:
+            return
+        snapshot = self._event_monitor.get_latest()
+        if snapshot is None:
+            return
+        window = snapshot.get("active_window")
+        if window == self._last_context_window:
+            return
+        self._last_context_window = window
+        if self.sprite_manager is not None:
+            app = window if window and window != "Unknown" else ""
+            self.sprite_manager.push_event("app.foreground", {"app": app})
 
     def _check_sleep(self):
         if self.current_state() == VisualIntent.SLEEPING.value:

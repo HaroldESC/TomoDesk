@@ -547,8 +547,31 @@ El parpadeo ya no es "el idle": es un clip `timed` declarado como overlay del cl
 
 - Implementado: catálogo de intents, modelo de datos, loader, `AnimationController`,
   migración del sprite default, integración con `overlay_window`.
-- Pendiente (ver `redesign.md`): Context Packs + `VisualStateResolver` (traducir eventos
-  de aplicaciones a intenciones), migración de `PersonalityPackManager` a JSON.
+- Implementado: Context Packs (`src/context/`, formato `context-pack-v1`),
+  `VisualStateResolver` (agente > contexto > idle) y detección de ventana activa que
+  emite `app.foreground` al resolver.
+- Pendiente (ver `redesign.md`): migración de `PersonalityPackManager` a JSON.
+
+### Context Packs (`context-pack-v1`)
+
+Traducen eventos de aplicaciones/sistema a intenciones visuales. No conocen sprites.
+
+| File | Purpose |
+|---|---|
+| `data/context_packs/schema.json` | JSON Schema for context packs |
+| `data/context_packs/vscode/manifest.json` | Ship with the app (VS Code / terminal → `WORKING_CODE`) |
+| `src/context/context_pack.py` | `ContextPack`, `ContextPackManager` (dir + ZIP, validation, priority) |
+| `src/core/visual_state_resolver.py` | `IntentRequest`, `VisualStateResolver` (agent > context > idle) |
+
+Cada evento puede declarar `intent`, `priority`, `one_shot` y un `match` opcional sobre
+el payload (p. ej. `match.app` como subcadenas del título de la ventana activa).
+`ContextPackManager.resolve_event` devuelve el `IntentRequest` de mayor prioridad entre
+los packs activos (`config["context"]["active_packs"]`).
+
+`VisualStateResolver` combina: intent del agente (prioridad 100) > intent transitorio
+one-shot de contexto (si `priority >= base`) > intent base de contexto (10) > `IDLE`.
+`SpriteManager` sincroniza el resolver con el `AnimationController` en cada tick y emite
+los eventos de contexto recibidos vía `push_event`.
 
 ---
 
@@ -900,7 +923,8 @@ class I18nManager:
 ```
 src/
   config/       config.py, credentials.py, i18n.py, logging_config.py
-  core/         events.py, state.py, context.py, conversation.py
+  context/      context_pack.py
+  core/         events.py, state.py, context.py, conversation.py, intents.py, visual_state_resolver.py
   gui/
     windows/    overlay_window, main_window, settings_dialog, notes/reminders/memories
     widgets/    chat_widget, speech_bubble
@@ -949,6 +973,9 @@ data/
     example_tomo/
     LinVT/
     GUIDE.md
+  context_packs/     — Context packs (events → intents)
+    schema.json
+    vscode/manifest.json
 tests/              — pytest suite
 docs/
   TECHNICAL_SPEC.md — This document

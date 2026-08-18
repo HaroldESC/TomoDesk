@@ -1,0 +1,38 @@
+{
+  "id": "vscode",
+  "name": "VS Code",
+  "version": "1.0.0",
+  "format": "context-pack-v1",
+  "app": "vscode",
+  "events": {
+    "app.foreground": {
+      "match": {
+        "app": [
+          "visual studio code",
+          "visual studio",
+          "code",
+          "pycharm",
+          "intellij",
+          "webstorm",
+          "neovim",
+          "vim",
+          "terminal",
+          "cmd",
+          "powershell"
+        ]
+      },
+      "intent": "WORKING_CODE",
+      "priority": 2
+    },
+    "build.success": {
+      "intent": "CELEBRATE",
+      "priority": 3,
+      "one_shot": true
+    },
+    "build.failed": {
+      "intent": "CONFUSED",
+      "priority": 3,
+      "one_shot": true
+    }
+  }
+}

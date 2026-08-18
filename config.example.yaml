@@ -71,3 +71,6 @@ window_sitting:
   minimized_behavior: 0
   target: active_window
   transition_speed: 0.5
+context:
+  active_packs:
+    - vscode

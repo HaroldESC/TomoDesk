@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Context Pack",
+  "type": "object",
+  "required": ["id", "name", "version", "format", "events"],
+  "additionalProperties": false,
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "name": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    },
+    "format": {
+      "const": "context-pack-v1"
+    },
+    "app": {
+      "type": "string"
+    },
+    "events": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["intent"],
+        "additionalProperties": true,
+        "properties": {
+          "intent": {
+            "type": "string",
+            "minLength": 1
+          },
+          "priority": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "one_shot": {
+            "type": "boolean"
+          },
+          "match": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "app": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

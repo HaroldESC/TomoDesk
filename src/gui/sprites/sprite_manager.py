@@ -5,7 +5,8 @@ from typing import Dict, List, Optional
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QPixmap, QPainter, QColor, QFont, QPen
 
-from src.core.intents import VisualIntent
+from src.core.intents import VisualIntent, normalize_intent
+from src.core.visual_state_resolver import VisualStateResolver
 from src.gui.sprites.animation_controller import AnimationController
 from src.gui.sprites.sprite_loader import SpriteLoader, SpriteLoadError
 from src.gui.sprites.sprite_models import AnimationClip, ClipFrame, SpritePackData
@@ -14,10 +15,14 @@ logger = logging.getLogger(__name__)
 
 
 class SpriteManager:
-    def __init__(self, config: dict, sprite_dir: str = "data/sprites"):
+    def __init__(self, config: dict, sprite_dir: str = "data/sprites",
+                 resolver: Optional[VisualStateResolver] = None):
         self.config = config
         self.sprite_dir = Path(sprite_dir)
         self.character_size = config.get("ui", {}).get("character_size", 150)
+        self.resolver = resolver
+        self._last_emotion: Optional[dict] = None
+        self._transient_played = False
 
         self.animation_controller: Optional[AnimationController] = None
         self._in_error = False
@@ -115,11 +120,41 @@ class SpriteManager:
         if self._last_tick_time is not None:
             dt_ms = (now - self._last_tick_time) * 1000.0
             if self.animation_controller:
+                if self.resolver is not None:
+                    self._sync_from_resolver()
                 self.animation_controller.update(dt_ms)
         self._last_tick_time = now
 
+    def _sync_from_resolver(self):
+        if self.resolver is None or self.animation_controller is None:
+            return
+        if self.resolver.has_transient() and self._transient_played:
+            if (self.animation_controller.current_intent
+                    != self.resolver.transient_intent()):
+                self.resolver.clear_transient()
+                self._transient_played = False
+        intent = self.resolver.resolve(self._last_emotion)
+        accepted = self.animation_controller.request_intent(intent, self._last_emotion)
+        if (self.resolver.has_transient()
+                and intent == self.resolver.transient_intent() and accepted):
+            self._transient_played = True
+
+    def push_event(self, event: str, payload: Optional[dict] = None):
+        if self.resolver is not None:
+            self.resolver.push_event(event, payload)
+
     def set_state(self, state, emotion_state: Optional[dict] = None):
         if self._in_error:
+            return
+        self._last_emotion = emotion_state
+        if self.resolver is not None:
+            intent = state.value if isinstance(state, VisualIntent) else state
+            normalized = normalize_intent(intent)
+            if normalized is None:
+                return
+            agent = normalized if normalized != VisualIntent.IDLE else None
+            self.resolver.set_agent_intent(agent)
+            logger.debug(f"Agent intent set: {normalized}")
             return
         if self.animation_controller:
             intent = state.value if isinstance(state, VisualIntent) else state
