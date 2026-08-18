@@ -1,0 +1,73 @@
+{
+  "id": "default",
+  "name": "Default",
+  "version": "1.1.0",
+  "format": "sprite-pack-v1",
+  "assets": {
+    "image_format": "png",
+    "frame_width": 500,
+    "frame_height": 500
+  },
+  "intent_map": {
+    "IDLE": "idle",
+    "TALKING": "talking",
+    "SLEEPING": "sleeping",
+    "CELEBRATE": "happy"
+  },
+  "fallbacks": {
+    "LISTENING": "TALKING",
+    "THINKING": "IDLE",
+    "SURPRISED": "IDLE",
+    "CONFUSED": "IDLE",
+    "WORKING_CODE": "IDLE",
+    "WORKING_ART": "IDLE",
+    "READING": "IDLE",
+    "WRITING": "IDLE",
+    "GAMING": "CELEBRATE",
+    "WAITING": "IDLE",
+    "LOOKING": "IDLE",
+    "NOTIFICATION": "IDLE"
+  },
+  "clips": {
+    "idle": {
+      "mode": "loop",
+      "frames": [
+        {"file": "assets/idle_0.png", "duration_ms": 4000}
+      ],
+      "interruptible": true,
+      "overlays": ["blink"]
+    },
+    "blink": {
+      "mode": "timed",
+      "interval_ms": 4000,
+      "frames": [
+        {"file": "assets/idle_1.png", "duration_ms": 100}
+      ],
+      "priority": 5
+    },
+    "talking": {
+      "mode": "loop",
+      "frames": [
+        {"file": "assets/talk_0.png", "duration_ms": 100},
+        {"file": "assets/talk_1.png", "duration_ms": 100}
+      ],
+      "interruptible": true
+    },
+    "sleeping": {
+      "mode": "hold",
+      "frames": [
+        {"file": "assets/sleep_0.png", "duration_ms": 1000}
+      ],
+      "interruptible": false
+    },
+    "happy": {
+      "mode": "once",
+      "return_to": "IDLE",
+      "frames": [
+        {"file": "assets/happy_0.png", "duration_ms": 150},
+        {"file": "assets/happy_1.png", "duration_ms": 150}
+      ],
+      "interruptible": true
+    }
+  }
+}

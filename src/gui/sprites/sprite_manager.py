@@ -5,9 +5,10 @@ from typing import Dict, List, Optional
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QPixmap, QPainter, QColor, QFont, QPen
 
-from src.gui.sprites.animation_manager import AnimationManager
-from src.gui.sprites.animation_state import AnimationState
+from src.core.intents import VisualIntent
+from src.gui.sprites.animation_controller import AnimationController
 from src.gui.sprites.sprite_loader import SpriteLoader, SpriteLoadError
+from src.gui.sprites.sprite_models import AnimationClip, ClipFrame, SpritePackData
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,8 @@ class SpriteManager:
         self.sprite_dir = Path(sprite_dir)
         self.character_size = config.get("ui", {}).get("character_size", 150)
 
-        self.animation_manager: Optional[AnimationManager] = None
+        self.animation_controller: Optional[AnimationController] = None
+        self._in_error = False
         self.frame_timer = QTimer()
         self.frame_timer.timeout.connect(self._on_timer_tick)
         self._last_tick_time: Optional[float] = None
@@ -45,31 +47,38 @@ class SpriteManager:
             sprite_dir = None
 
         try:
-            sprite_config, frames_cache = self._loader.load_sprite(sprite_name, sprite_dir)
+            pack, frames_cache = self._loader.load_sprite(sprite_name, sprite_dir)
+            self._in_error = False
         except SpriteLoadError as e:
             logger.error(f"Failed to load sprite '{sprite_name}': {e}")
             error_pix = self._create_error_pixmap(sprite_name)
-            sprite_config = {
-                "name": sprite_name, "version": "1.0.0",
-                "frame_width": self.character_size,
-                "frame_height": self.character_size,
-                "states": {
-                    "error": {
-                        "type": "simple",
-                        "frames": ["error"],
-                        "frame_durations": [1000],
-                        "loop": True,
-                    }
+            pack = SpritePackData(
+                id=sprite_name,
+                name=sprite_name,
+                version="1.0.0",
+                assets={
+                    "image_format": "png",
+                    "frame_width": self.character_size,
+                    "frame_height": self.character_size,
                 },
-            }
+                intent_map={VisualIntent.IDLE.value: "error"},
+                fallbacks={},
+                clips={
+                    "error": AnimationClip(
+                        name="error",
+                        mode="hold",
+                        frames=[ClipFrame(file="error", duration_ms=1000)],
+                        interruptible=False,
+                    )
+                },
+            )
             frames_cache = {"error": [error_pix]}
+            self._in_error = True
 
         self._scale_frames(frames_cache)
 
-        self.animation_manager = AnimationManager(sprite_config, frames_cache)
-
-        if "error" in frames_cache:
-            self.animation_manager.force_state("error")
+        self.animation_controller = AnimationController(pack, frames_cache)
+        self.animation_controller.force_intent(VisualIntent.IDLE)
 
     def _create_error_pixmap(self, sprite_name: str) -> QPixmap:
         pix = QPixmap(self.character_size, self.character_size)
@@ -105,23 +114,26 @@ class SpriteManager:
         now = time.monotonic()
         if self._last_tick_time is not None:
             dt_ms = (now - self._last_tick_time) * 1000.0
-            if self.animation_manager:
-                self.animation_manager.update(dt_ms)
+            if self.animation_controller:
+                self.animation_controller.update(dt_ms)
         self._last_tick_time = now
 
-    def set_state(self, state: str, emotion_state: Optional[dict] = None):
-        if self.animation_manager:
-            self.animation_manager.request_state(state, emotion_state)
-            logger.debug(f"Animation state requested: {state}")
+    def set_state(self, state, emotion_state: Optional[dict] = None):
+        if self._in_error:
+            return
+        if self.animation_controller:
+            intent = state.value if isinstance(state, VisualIntent) else state
+            self.animation_controller.request_intent(intent, emotion_state)
+            logger.debug(f"Animation intent requested: {intent}")
 
     def set_frame_speed(self, multiplier: float):
-        if self.animation_manager:
-            self.animation_manager.set_frame_speed(multiplier)
+        if self.animation_controller:
+            self.animation_controller.set_speed(multiplier)
 
     def get_current_pixmap(self) -> QPixmap:
-        if not self.animation_manager:
+        if not self.animation_controller:
             return QPixmap(self.character_size, self.character_size)
-        pix = self.animation_manager.get_current_pixmap()
+        pix = self.animation_controller.get_current_pixmap()
         show_labels = self.config.get("ui", {}).get("sprite", {}).get("show_frame_labels", False)
         if show_labels:
             pix = QPixmap(pix)
@@ -136,9 +148,11 @@ class SpriteManager:
 
     @property
     def current_state(self) -> str:
-        if self.animation_manager:
-            return self.animation_manager.current_state_name
-        return AnimationState.IDLE
+        if self._in_error:
+            return "error"
+        if self.animation_controller:
+            return self.animation_controller.current_intent
+        return VisualIntent.IDLE.value
 
     @current_state.setter
     def current_state(self, value: str):
@@ -146,8 +160,8 @@ class SpriteManager:
 
     @property
     def current_frame(self) -> int:
-        if self.animation_manager:
-            return self.animation_manager.current_frame_index
+        if self.animation_controller:
+            return self.animation_controller.current_frame_index
         return 0
 
     @current_frame.setter
@@ -158,8 +172,11 @@ class SpriteManager:
         self.character_size = size
         old_state = self.current_state
         self._load_sprite()
-        if self.animation_manager:
-            self.animation_manager.force_state(old_state)
+        if self.animation_controller:
+            if old_state == "error":
+                self.animation_controller.force_intent(VisualIntent.IDLE)
+            else:
+                self.animation_controller.force_intent(old_state)
 
     def start_animation(self):
         self._last_tick_time = None
@@ -171,8 +188,8 @@ class SpriteManager:
 
     @property
     def frames(self) -> Dict[str, List[QPixmap]]:
-        if self.animation_manager:
-            return getattr(self.animation_manager, "_frames_cache", {})
+        if self.animation_controller:
+            return getattr(self.animation_controller, "_frames", {})
         return {}
 
     def is_animating(self) -> bool:

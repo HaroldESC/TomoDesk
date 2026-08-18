@@ -1,3 +1,10 @@
+"""Loader del Sprite Pack en formato ``sprite-pack-v1`` (manifest.json).
+
+Valida el manifest contra el esquema de ``data/sprites/schema.json`` (si existe),
+verifica la existencia de los assets y construye :class:`SpritePackData` junto
+con la caché de pixmaps por clip.
+"""
+
 import json
 import logging
 from pathlib import Path
@@ -6,7 +13,14 @@ from typing import Dict, List, Optional, Tuple
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPixmap
 
+from src.core.intents import VisualIntent
+from src.gui.sprites.sprite_models import AnimationClip, ClipFrame, SpritePackData
+
 logger = logging.getLogger(__name__)
+
+SPRITE_PACK_FORMAT = "sprite-pack-v1"
+
+CLIP_MODES = ("loop", "once", "hold", "ping_pong", "timed")
 
 
 class SpriteLoadError(Exception):
@@ -21,84 +35,84 @@ class SpriteLoader:
 
     def load_sprite(self, sprite_name: str,
                     sprite_dir_override: Optional[Path] = None
-                    ) -> Tuple[dict, Dict[str, List[QPixmap]]]:
+                    ) -> Tuple[SpritePackData, Dict[str, List[QPixmap]]]:
         sprite_dir = sprite_dir_override or (self.base_path / sprite_name)
-        sprite_json_path = sprite_dir / "sprite.json"
+        manifest_path = sprite_dir / "manifest.json"
 
-        if not sprite_json_path.exists():
-            raise SpriteLoadError(f"sprite.json not found for '{sprite_name}'")
+        if not manifest_path.exists():
+            raise SpriteLoadError(f"manifest.json not found for '{sprite_name}'")
 
         try:
-            with open(sprite_json_path, encoding="utf-8") as f:
-                sprite_config = json.load(f)
+            with open(manifest_path, encoding="utf-8") as f:
+                manifest = json.load(f)
         except (json.JSONDecodeError, OSError) as e:
-            raise SpriteLoadError(f"Invalid sprite.json for '{sprite_name}': {e}")
+            raise SpriteLoadError(f"Invalid manifest.json for '{sprite_name}': {e}")
 
-        errors = self._validate(sprite_config, sprite_dir)
+        if manifest.get("format", "") != SPRITE_PACK_FORMAT:
+            raise SpriteLoadError(
+                f"Sprite '{sprite_name}' has unsupported format "
+                f"'{manifest.get('format')}' (expected {SPRITE_PACK_FORMAT})"
+            )
+
+        errors = self._validate(manifest, sprite_dir)
         if errors:
             raise SpriteLoadError(f"Sprite '{sprite_name}' validation failed: {errors}")
 
-        frames_cache = self._load_frames(sprite_config, sprite_dir)
+        pack = self._build_pack(manifest)
+        frames_cache = self._load_frames(pack, sprite_dir)
 
-        return sprite_config, frames_cache
+        return pack, frames_cache
 
-    def _validate(self, sprite_config: dict, sprite_dir: Path) -> List[str]:
-        errors = []
+    def _validate(self, manifest: dict, sprite_dir: Path) -> List[str]:
+        errors: List[str] = []
         schema = self._get_schema()
 
-        try:
-            import jsonschema
+        if schema:
             try:
-                jsonschema.validate(sprite_config, schema)
-            except jsonschema.ValidationError as e:
-                errors.append(str(e))
-        except ImportError:
-            logger.warning("jsonschema not installed, skipping schema validation")
+                import jsonschema
+                try:
+                    jsonschema.validate(manifest, schema)
+                except jsonschema.ValidationError as e:
+                    errors.append(str(e))
+            except ImportError:
+                logger.warning("jsonschema not installed, skipping schema validation")
+        else:
+            if manifest.get("format") != SPRITE_PACK_FORMAT:
+                errors.append(f"format must be '{SPRITE_PACK_FORMAT}'")
+            if not manifest.get("id"):
+                errors.append("Missing required field: 'id'")
+            if not manifest.get("clips"):
+                errors.append("Missing required field: 'clips'")
+            assets = manifest.get("assets", {})
+            for key in ("image_format", "frame_width", "frame_height"):
+                if key not in assets:
+                    errors.append(f"Missing required field: 'assets.{key}'")
 
-        states = sprite_config.get("states", {})
-        if "idle" not in states:
-            errors.append("Missing required state: 'idle'")
-        if "talking" not in states:
-            errors.append("Missing required state: 'talking'")
+        if VisualIntent.IDLE.value not in manifest.get("intent_map", {}):
+            errors.append(f"Missing required intent: '{VisualIntent.IDLE.value}'")
 
-        for state_name, cfg in states.items():
-            anim_type = cfg.get("type", "simple")
-            if anim_type in ("simple", "one_shot"):
-                frames = cfg.get("frames", [])
-                durations = cfg.get("frame_durations", [])
-                if len(frames) != len(durations):
-                    errors.append(
-                        f"State '{state_name}': frames ({len(frames)}) "
-                        f"must match frame_durations ({len(durations)})"
-                    )
-                for fname in frames:
-                    if not (sprite_dir / fname).exists():
-                        errors.append(
-                            f"State '{state_name}': frame '{fname}' not found"
-                        )
-
-            elif anim_type == "composite":
-                for sub in cfg.get("animations", []):
-                    sframes = sub.get("frames", [])
-                    sdurations = sub.get("frame_durations", [])
-                    if len(sframes) != len(sdurations):
-                        errors.append(
-                            f"State '{state_name}/{sub.get('name')}': "
-                            f"frames ({len(sframes)}) must match frame_durations ({len(sdurations)})"
-                        )
-
-        for tname, tcfg in sprite_config.get("transitions", {}).items():
-            tframes = tcfg.get("frames", [])
-            tdurations = tcfg.get("frame_durations", [])
-            if len(tframes) != len(tdurations):
+        for clip_name, cfg in manifest.get("clips", {}).items():
+            mode = cfg.get("mode", "loop")
+            if mode not in CLIP_MODES:
+                errors.append(f"Clip '{clip_name}': unknown mode '{mode}'")
+            if mode == "timed" and not cfg.get("interval_ms"):
                 errors.append(
-                    f"Transition '{tname}': frames ({len(tframes)}) "
-                    f"must match frame_durations ({len(tdurations)})"
+                    f"Clip '{clip_name}': mode 'timed' requires 'interval_ms'"
                 )
+            for frame in cfg.get("frames", []):
+                fpath = sprite_dir / frame.get("file", "")
+                if not fpath.exists():
+                    errors.append(
+                        f"Clip '{clip_name}': frame '{frame.get('file')}' not found"
+                    )
+                elif fpath.suffix.lower() != ".png":
+                    errors.append(
+                        f"Clip '{clip_name}': frame '{frame.get('file')}' must be PNG"
+                    )
 
         return errors
 
-    def _get_schema(self) -> dict:
+    def _get_schema(self) -> Optional[dict]:
         if self._schema is None:
             schema_path = self.base_path / "schema.json"
             if schema_path.exists():
@@ -108,56 +122,58 @@ class SpriteLoader:
                 self._schema = {}
         return self._schema
 
-    def _load_frames(self, sprite_config: dict,
+    def _build_pack(self, manifest: dict) -> SpritePackData:
+        clips: Dict[str, AnimationClip] = {}
+        for name, cfg in manifest.get("clips", {}).items():
+            frames = [
+                ClipFrame(file=f.get("file", ""), duration_ms=f.get("duration_ms", 100))
+                for f in cfg.get("frames", [])
+            ]
+            clips[name] = AnimationClip(
+                name=name,
+                mode=cfg.get("mode", "loop"),
+                frames=frames,
+                interval_ms=cfg.get("interval_ms", 0),
+                return_to=cfg.get("return_to"),
+                interruptible=cfg.get("interruptible", True),
+                priority=cfg.get("priority", 0),
+                transition_in_ms=cfg.get("transition_in_ms", 0),
+                transition_out_ms=cfg.get("transition_out_ms", 0),
+                overlays=cfg.get("overlays", []),
+                variants=cfg.get("variants", {}),
+            )
+
+        return SpritePackData(
+            id=manifest["id"],
+            name=manifest.get("name", manifest["id"]),
+            version=manifest.get("version", "1.0.0"),
+            assets=manifest.get("assets", {}),
+            intent_map=manifest.get("intent_map", {}),
+            fallbacks=manifest.get("fallbacks", {}),
+            clips=clips,
+            transitions=manifest.get("transitions", {}),
+        )
+
+    def _load_frames(self, pack: SpritePackData,
                      sprite_dir: Path) -> Dict[str, List[QPixmap]]:
-        width = sprite_config.get("frame_width", 150)
-        height = sprite_config.get("frame_height", 150)
+        width = int(pack.assets.get("frame_width", 150))
+        height = int(pack.assets.get("frame_height", 150))
         cache: Dict[str, List[QPixmap]] = {}
 
-        def _load_pngs(ref: str) -> List[QPixmap]:
-            png_path = sprite_dir / ref
-            if png_path.exists() and png_path.suffix.lower() == ".png":
-                pix = QPixmap(str(png_path))
-                if not pix.isNull():
-                    if (pix.width() != width or pix.height() != height) and pix.width() > 0:
-                        pix = pix.scaled(width, height,
-                                         Qt.KeepAspectRatio,
-                                         Qt.SmoothTransformation)
-                    return [pix]
-            return []
-
-        states = sprite_config.get("states", {})
-
-        for state_name, cfg in states.items():
-            anim_type = cfg.get("type", "simple")
-            frames_list = []
-
-            if anim_type == "composite":
-                for sub in cfg.get("animations", []):
-                    sub_frames = []
-                    for fname in sub.get("frames", []):
-                        loaded = _load_pngs(fname)
-                        if loaded:
-                            sub_frames.extend(loaded)
-                    if sub_frames:
-                        cache[f"{state_name}/{sub['name']}"] = sub_frames
-            else:
-                for fname in cfg.get("frames", []):
-                    loaded = _load_pngs(fname)
-                    if loaded:
-                        frames_list.extend(loaded)
-
-            if frames_list:
-                cache[state_name] = frames_list
-
-        for tname, tcfg in sprite_config.get("transitions", {}).items():
-            t_frames = []
-            for fname in tcfg.get("frames", []):
-                loaded = _load_pngs(fname)
-                if loaded:
-                    t_frames.extend(loaded)
-            if t_frames:
-                cache[tname] = t_frames
+        for name, clip in pack.clips.items():
+            pixmaps: List[QPixmap] = []
+            for frame in clip.frames:
+                png_path = sprite_dir / frame.file
+                if png_path.exists() and png_path.suffix.lower() == ".png":
+                    pix = QPixmap(str(png_path))
+                    if not pix.isNull():
+                        if (pix.width() != width or pix.height() != height) and pix.width() > 0:
+                            pix = pix.scaled(width, height,
+                                             Qt.KeepAspectRatio,
+                                             Qt.SmoothTransformation)
+                        pixmaps.append(pix)
+            if pixmaps:
+                cache[name] = pixmaps
 
         return cache
 
@@ -166,7 +182,7 @@ class SpriteLoader:
         if not self.base_path.exists():
             return sprites
         for child in self.base_path.iterdir():
-            if child.is_dir() and (child / "sprite.json").exists():
+            if child.is_dir() and (child / "manifest.json").exists():
                 sprites.append(child.name)
         return sorted(sprites)
 
@@ -183,10 +199,12 @@ class SpriteLoader:
 
     def get_preview(self, sprite_name: str) -> Optional[QPixmap]:
         try:
-            sprite_config, frames_cache = self.load_sprite(sprite_name)
-            idle_frames = frames_cache.get("idle") or frames_cache.get("idle/blink", [])
-            if idle_frames:
-                return idle_frames[0]
+            pack, frames_cache = self.load_sprite(sprite_name)
+            clip_name = pack.intent_map.get(VisualIntent.IDLE.value)
+            if clip_name:
+                idle_frames = frames_cache.get(clip_name)
+                if idle_frames:
+                    return idle_frames[0]
         except SpriteLoadError as e:
             logger.warning(f"Could not load preview for '{sprite_name}': {e}")
         return None

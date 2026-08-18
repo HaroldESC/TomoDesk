@@ -27,6 +27,7 @@ data/*.log
 # Sprites (user-downloaded) — default pack ships with app
 data/sprites/*
 !data/sprites/default/
+!data/sprites/schema.json
 
 # Personality packs (user-downloaded) — default pack ships with app
 data/personality_packs/*

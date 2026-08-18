@@ -59,8 +59,8 @@
 │  └────────┬─────────┘  └────────┬────────┘  └─────┬──────┘  │
 │           │                     │                   │       │
 │  ┌────────▼─────────────────────▼───────────────────▼──────┐ │
-│  │  sprites/   sprite_manager + animation_manager          │ │
-│  │             + sprite_loader + sprite_models             │ │
+│  │  sprites/   sprite_manager + animation_controller         │ │
+│  │             + sprite_loader + sprite_models               │ │
 │  └─────────────────────────────────────────────────────────┘ │
 │  styles/   centralized QSS per theme                        │
 └──────────────────────┬──────────────────────────────────────┘
@@ -115,10 +115,9 @@ src/
 │   │   └── window_sitting.py    # Window-sitting controller
 │   ├── sprites/         # Sprite & animation system
 │   │   ├── sprite_manager.py    # Main sprite controller
-│   │   ├── sprite_loader.py     # Custom sprite loader (JSON + validation)
-│   │   ├── sprite_models.py     # Data classes (AnimState, SubAnimation)
-│   │   ├── animation_manager.py # Data-driven animation engine
-│   │   └── animation_state.py   # State constants
+│   │   ├── sprite_loader.py     # Custom sprite loader (manifest.json + validation)
+│   │   ├── sprite_models.py     # Data classes (SpritePackData, AnimationClip)
+│   │   └── animation_controller.py # Data-driven clip player
 │   └── styles/          # Stylesheets
 │       └── styles.py    # QSS: dark/light, all components
 ├── llm/                 # LLM abstraction
@@ -148,7 +147,7 @@ src/
 - **StateManager** (core/state.py): maintains emotional vector `{happiness, energy, curiosity, closeness, connection}` with decay over time, event-based updates, and thread-safe access.
 - **ConversationEngine** (core/conversation.py): orchestrates LLM calls — builds prompt via PromptBuilder, calls provider, stores messages, triggers episodic summarization.
 - **MemoryManager** (memory/memory.py): facade for all three memory tiers. Thread-safe via DatabaseManager's Lock.
-- **AnimationManager** (gui/sprites/): data-driven animation engine. Reads sprite.json definitions, supports simple/one_shot/composite states, emotional variants, and transitions.
+- **AnimationController** (gui/sprites/animation_controller.py): reproduces clips from a `SpritePackData`. Resolves intents to clips via `intent_map` + `fallbacks`, supports modes (`loop`/`once`/`hold`/`ping_pong`/`timed`), overlays, transitions and emotional variants. The engine never requests an animation by name: it always requests a `VisualIntent` (`src/core/intents.py`).
 - **ProactiveEngine** (llm/proactive_engine.py): evaluates trigger events against policy, selects phrases from comment_loader or personality pack, dispatches via callback.
 
 ---
@@ -501,54 +500,55 @@ Assembled in order by `PromptBuilder`:
 
 ---
 
-## 10. Animation System (Subfase 2.9)
+## 10. Animation System (rediseño v2 — intents + clips)
 
-### Data-driven Architecture
+### Conceptos separados
 
-Animation data is defined in JSON per sprite and validated against `data/sprites/schema.json` (JSON Schema via `jsonschema`).
+El sistema separa cuatro conceptos que antes estaban mezclados en el estado de animación:
+
+| Concepto | Qué es | Dónde vive |
+|---|---|---|
+| **Intención** | Qué quiere representar el agente (vocabulario semántico) | `src/core/intents.py` (`VisualIntent`) |
+| **Clip** | Cómo se ve: frames, timing, modo de reproducción | Sprite Pack (`manifest.json`) |
+| **Transición** | Cómo cambia entre clips | Sprite Pack (`transitions`) |
+| **Overlay** | Comportamiento simultáneo (parpadeo, bob) | Sprite Pack (`overlays`) |
+
+Regla fundamental: **el motor nunca pide una animación, siempre una intención**.
+`request_intent(VisualIntent.X)` — nunca `play("happy")`.
+
+### Catálogo de intenciones (16)
+
+`IDLE`, `TALKING`, `LISTENING`, `THINKING`, `SLEEPING`, `CELEBRATE`, `SURPRISED`,
+`CONFUSED`, `WORKING_CODE`, `WORKING_ART`, `READING`, `WRITING`, `GAMING`, `WAITING`,
+`LOOKING`, `NOTIFICATION`. Definidas en `src/core/intents.py`; extensibles.
 
 ### Files
 
 | File | Purpose |
 |---|---|
-| `data/sprites/schema.json` | JSON Schema for sprite definitions |
-| `data/sprites/default/sprite.json` | Default procedural sprite definition |
-| `src/gui/sprites/sprite_loader.py` | `SpriteLoader` — loads sprite.json, validates against schema, loads frames |
-| `src/gui/sprites/sprite_models.py` | `AnimState`, `SubAnimation` data classes |
-| `src/gui/sprites/animation_state.py` | State name constants (`IDLE`, `TALKING`, `SLEEPING`, `HAPPY`) |
-| `src/gui/sprites/animation_manager.py` | `AnimationManager` — state machine, transitions, frame timing |
-| `src/gui/sprites/sprite_manager.py` | `SpriteManager` — facade for overlay; manages timer, state transitions |
+| `data/sprites/schema.json` | JSON Schema for sprite packs (`sprite-pack-v1`) |
+| `data/sprites/default/manifest.json` | Default sprite definition |
+| `src/core/intents.py` | `VisualIntent` catalog, `normalize_intent`, `is_official` |
+| `src/gui/sprites/sprite_loader.py` | `SpriteLoader` — loads `manifest.json`, validates, loads frames |
+| `src/gui/sprites/sprite_models.py` | `SpritePackData`, `AnimationClip`, `ClipFrame` data classes |
+| `src/gui/sprites/animation_controller.py` | `AnimationController` — clip player, transitions, overlays |
+| `src/gui/sprites/sprite_manager.py` | `SpriteManager` — facade for overlay; timer + controller |
 
-### State Types
+### Sprite Pack (`manifest.json`)
 
-| Type | Behavior |
-|---|---|
-| `simple` | Loops through frames indefinitely |
-| `one_shot` | Plays once, then auto-returns to previous state |
-| `composite` | Weighted random sub-animations (e.g., blink during idle) |
+Cada clip declara su modo (`loop`, `once`, `hold`, `ping_pong`, `timed`), frames con
+`duration_ms` propio, `interruptible`, `overlays`, `variants` y, para `once`, `return_to`.
+El `intent_map` traduce intenciones a clips y `fallbacks` define cadenas de sustitución
+(intent → intent). Último recurso: `IDLE`.
 
-### Emotional Variants
+El parpadeo ya no es "el idle": es un clip `timed` declarado como overlay del clip `idle`.
 
-Each state can define `variants` with per-emotion frame overrides. Example:
+### Estado de implementación
 
-```json
-"variants": {
-  "happiness>0.7": {"frames": ["happy_idle_1", "happy_idle_2"]},
-  "energy<0.3": {"frames": ["tired_idle_1"]}
-}
-```
-
-### Transitions
-
-Defined in `sprite.json` under `"transitions"` key. Each transition can have its own frames and durations for smooth blending between states.
-
-### Default Procedural Sprite
-
-When no `sprite.json` is found for the active sprite, `SpriteLoader._procedural_frame()` generates a cat-like character using QPainter (ears, big eyes with highlights, blush, body, expressions per state).
-
-### Custom Sprites
-
-Users can provide `data/sprites/<name>/sprite.json` with frame images. Loaded from the `frames/` subdirectory. Selected via Settings -> Personaje -> Sprite, or by setting `ui.sprite.active` in config.
+- Implementado: catálogo de intents, modelo de datos, loader, `AnimationController`,
+  migración del sprite default, integración con `overlay_window`.
+- Pendiente (ver `redesign.md`): Context Packs + `VisualStateResolver` (traducir eventos
+  de aplicaciones a intenciones), migración de `PersonalityPackManager` a JSON.
 
 ---
 
@@ -905,7 +905,7 @@ src/
     windows/    overlay_window, main_window, settings_dialog, notes/reminders/memories
     widgets/    chat_widget, speech_bubble
     managers/   tray_icon, hint_manager, window_sitting
-    sprites/    sprite_manager, sprite_loader, animation_manager, animation_state, sprite_models
+    sprites/    sprite_manager, sprite_loader, animation_controller, sprite_models
     styles/     styles.py
   llm/          llm.py, prompts.py, proactive_engine.py, proactive_policy.py
   memory/       memory.py, database.py, chroma_manager.py, episodic_*.py
@@ -943,7 +943,7 @@ data/
   comments_es.yaml  — Spanish phrases
   sprites/          — Sprite definitions + schemas
     schema.json
-    default/sprite.json
+    default/manifest.json
     GUIDE.md
   personality_packs/ — User-installed packs
     example_tomo/

@@ -10,9 +10,9 @@ from PySide6.QtGui import QPainter, QPaintEvent, QGuiApplication, QCursor, QWhee
 from PySide6.QtWidgets import QWidget, QApplication, QMenu
 
 from src.config.config import get_config_path
+from src.core.intents import VisualIntent
 from src.gui.styles.styles import get_style_set
 from src.gui.sprites.sprite_manager import SpriteManager
-from src.gui.sprites.animation_state import AnimationState
 from src.gui.widgets.speech_bubble import SpeechBubble
 from src.gui.managers.hint_manager import HintManager
 from src.gui.managers.window_sitting import WindowSittingController
@@ -263,12 +263,12 @@ class OverlayWindow(QWidget):
         self.sprite_manager.stop_animation()
 
     def set_talking(self, talking: bool):
-        if self.current_state() == AnimationState.SLEEPING:
+        if self.current_state() == VisualIntent.SLEEPING.value:
             return
         if talking:
-            self.set_animation_state(AnimationState.TALKING)
+            self.set_animation_state(VisualIntent.TALKING)
         else:
-            self.set_animation_state(AnimationState.IDLE)
+            self.set_animation_state(VisualIntent.IDLE)
 
     def enterEvent(self, event):
         self._reset_sleep_timer()
@@ -463,9 +463,9 @@ class OverlayWindow(QWidget):
         self._callbacks = callbacks
 
     def _enter_sleeping(self, reason="idle"):
-        if self.current_state() == AnimationState.SLEEPING:
+        if self.current_state() == VisualIntent.SLEEPING.value:
             return
-        self.set_animation_state(AnimationState.SLEEPING)
+        self.set_animation_state(VisualIntent.SLEEPING)
         if reason == "low_energy":
             msg = self.i18n.t("status.sleeping_low_energy",
                               default="So tired... need to rest... 💤")
@@ -475,7 +475,7 @@ class OverlayWindow(QWidget):
         self.show_bubble_text(msg, reset_timer=False)
 
     def _check_sleep(self):
-        if self.current_state() == AnimationState.SLEEPING:
+        if self.current_state() == VisualIntent.SLEEPING.value:
             if self.state_manager:
                 self.state_manager.update("idle", intensity=0.005)
             if self._event_monitor is not None:
@@ -505,9 +505,9 @@ class OverlayWindow(QWidget):
 
     def _reset_sleep_timer(self):
         self._last_interaction_time = time.time()
-        was_sleeping = self.current_state() == AnimationState.SLEEPING
+        was_sleeping = self.current_state() == VisualIntent.SLEEPING.value
         if was_sleeping:
-            self.set_animation_state(AnimationState.IDLE)
+            self.set_animation_state(VisualIntent.IDLE)
             self.update()
             if self.state_manager:
                 state = self.state_manager.get_state()
