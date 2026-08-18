@@ -1,3 +1,6 @@
+import json
+import zipfile
+
 import pytest
 import yaml
 from pathlib import Path
@@ -9,13 +12,20 @@ from src.personality.personality_pack import PersonalityPackManager
 def packs_dir(tmp_path):
     pack_path = tmp_path / "test_pack"
     pack_path.mkdir()
-    manifest = {"name": "Test Pack", "author": "Tester", "version": "1.0",
-                "min_tomodesk_version": "0.2.0", "type": "personality"}
-    (pack_path / "manifest.yaml").write_text(yaml.dump(manifest), encoding="utf-8")
+    manifest = {
+        "id": "test_pack",
+        "name": "Test Pack",
+        "author": "Tester",
+        "version": "1.0",
+        "format": "personality-pack-v1",
+        "min_tomodesk_version": "0.2.0",
+        "type": "personality",
+    }
+    (pack_path / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     phrases_dir = pack_path / "phrases"
     phrases_dir.mkdir()
-    (phrases_dir / "greeting.yaml").write_text(
-        yaml.dump({"greeting": ["Hello!", "Hi there!"]}), encoding="utf-8")
+    (phrases_dir / "greeting.json").write_text(
+        json.dumps({"greeting": ["Hello!", "Hi there!"]}), encoding="utf-8")
     return tmp_path
 
 
@@ -61,3 +71,56 @@ class TestPersonalityPackManager:
         mgr.set_active_pack("Test Pack")
         sounds = mgr.discover_sounds("Test Pack")
         assert sounds == []
+
+    def test_zip_pack_json(self, tmp_path):
+        zip_path = tmp_path / "zip_pack.zip"
+        with zipfile.ZipFile(zip_path, "w") as zf:
+            zf.writestr("manifest.json", json.dumps({
+                "id": "zip_pack",
+                "name": "Zip Pack",
+                "format": "personality-pack-v1",
+                "type": "personality",
+            }))
+            zf.writestr("phrases/greeting.json",
+                        json.dumps({"greeting": ["Hey!"]}))
+        mgr = PersonalityPackManager(str(tmp_path))
+        mgr.scan_packs()
+        assert "Zip Pack" in mgr.list_packs()
+        mgr.set_active_pack("Zip Pack")
+        assert mgr.get_phrases("greeting") == ["Hey!"]
+
+    def test_legacy_yaml_pack_supported(self, tmp_path):
+        pack_path = tmp_path / "legacy"
+        pack_path.mkdir()
+        (pack_path / "manifest.yaml").write_text(
+            yaml.dump({"name": "Legacy Pack", "type": "personality"}),
+            encoding="utf-8")
+        phrases_dir = pack_path / "phrases"
+        phrases_dir.mkdir()
+        (phrases_dir / "greeting.yaml").write_text(
+            yaml.dump({"greeting": ["Hola"]}), encoding="utf-8")
+        mgr = PersonalityPackManager(str(tmp_path))
+        mgr.scan_packs()
+        assert "Legacy Pack" in mgr.list_packs()
+        mgr.set_active_pack("Legacy Pack")
+        assert mgr.get_phrases("greeting") == ["Hola"]
+
+    def test_unsupported_format_skipped(self, tmp_path):
+        pack_path = tmp_path / "future"
+        pack_path.mkdir()
+        (pack_path / "manifest.json").write_text(json.dumps({
+            "id": "future",
+            "name": "Future",
+            "format": "personality-pack-v2",
+        }), encoding="utf-8")
+        mgr = PersonalityPackManager(str(tmp_path))
+        mgr.scan_packs()
+        assert mgr.list_packs() == []
+
+    def test_default_pack_loads(self):
+        mgr = PersonalityPackManager("data/personality_packs")
+        mgr.scan_packs()
+        assert "Default" in mgr.list_packs()
+        mgr.set_active_pack("Default")
+        phrases = mgr.get_phrases("session_start")
+        assert isinstance(phrases, list) and len(phrases) > 0

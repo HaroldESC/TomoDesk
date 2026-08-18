@@ -550,7 +550,8 @@ El parpadeo ya no es "el idle": es un clip `timed` declarado como overlay del cl
 - Implementado: Context Packs (`src/context/`, formato `context-pack-v1`),
   `VisualStateResolver` (agente > contexto > idle) y detección de ventana activa que
   emite `app.foreground` al resolver.
-- Pendiente (ver `redesign.md`): migración de `PersonalityPackManager` a JSON.
+- Implementado: migración de `PersonalityPackManager` a JSON (`manifest.json` +
+  `phrases/*.json`, formato `personality-pack-v1`) con fallback legacy a YAML.
 
 ### Context Packs (`context-pack-v1`)
 

@@ -1,0 +1,10 @@
+{
+  "id": "default",
+  "name": "Default",
+  "author": "Harold",
+  "version": "1.0",
+  "format": "personality-pack-v1",
+  "min_tomodesk_version": "0.2.0",
+  "type": "personality",
+  "replaces": ["app_opened", "random"]
+}

@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 import yaml
@@ -8,6 +9,10 @@ from typing import Optional, Dict, Any, List
 from src.personality.zip_security import is_safe_zip_member, validate_zip_archive
 
 logger = logging.getLogger(__name__)
+
+PERSONALITY_PACK_FORMAT = "personality-pack-v1"
+MANIFEST_NAME = "manifest.json"
+LEGACY_MANIFEST_NAME = "manifest.yaml"
 
 
 def _safe_pack_name(name: str, fallback: str) -> str:
@@ -20,8 +25,33 @@ def _safe_pack_name(name: str, fallback: str) -> str:
     return cleaned[:100]
 
 
+def _read_json(path: Path) -> Optional[dict]:
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else None
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning(f"Failed to load {path}: {e}")
+        return None
+
+
+def _read_yaml(path: Path) -> Optional[dict]:
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        return data if isinstance(data, dict) else None
+    except Exception as e:
+        logger.warning(f"Failed to load {path}: {e}")
+        return None
+
+
 class PersonalityPackManager:
-    """Manages loading and activation of personality packs."""
+    """Manages loading and activation of personality packs.
+
+    Reads ``manifest.json`` + ``phrases/*.json`` (``personality-pack-v1``),
+    keeping a legacy fallback to ``manifest.yaml`` + ``phrases/*.yaml`` for
+    packs installed before the JSON migration.
+    """
 
     def __init__(self, packs_dir: str = "data/personality_packs"):
         self.packs_dir = Path(packs_dir)
@@ -44,26 +74,30 @@ class PersonalityPackManager:
         logger.info(f"Loaded {len(self._packs)} personality pack(s)")
 
     def _load_pack(self, pack_path: Path):
-        manifest_path = pack_path / "manifest.yaml"
+        manifest_path = pack_path / MANIFEST_NAME
         if not manifest_path.exists():
-            logger.warning(f"No manifest.yaml in {pack_path}")
-            return
-        try:
-            with open(manifest_path, "r", encoding="utf-8") as f:
-                manifest = yaml.safe_load(f)
-            if not isinstance(manifest, dict):
-                logger.warning(f"Invalid manifest in {pack_path}: not a mapping")
+            legacy_path = pack_path / LEGACY_MANIFEST_NAME
+            if not legacy_path.exists():
+                logger.warning(f"No manifest in {pack_path}")
                 return
-            name = _safe_pack_name(manifest.get("name", pack_path.name), pack_path.name)
-            self._packs[name] = {
-                "manifest": manifest,
-                "path": pack_path,
-                "type": manifest.get("type", "personality"),
-            }
-            self._load_phrases(name, pack_path / "phrases")
-            logger.info(f"Loaded pack: {name}")
-        except Exception as e:
-            logger.error(f"Failed to load pack {pack_path}: {e}")
+            manifest = _read_yaml(legacy_path)
+        else:
+            manifest = _read_json(manifest_path)
+
+        if manifest is None:
+            logger.warning(f"Invalid manifest in {pack_path}")
+            return
+        if not self._valid_format(manifest):
+            return
+
+        name = _safe_pack_name(manifest.get("name", pack_path.name), pack_path.name)
+        self._packs[name] = {
+            "manifest": manifest,
+            "path": pack_path,
+            "type": manifest.get("type", "personality"),
+        }
+        self._load_phrases(name, pack_path / "phrases")
+        logger.info(f"Loaded pack: {name}")
 
     def _load_zip_pack(self, zip_path: Path):
         if not validate_zip_archive(zip_path):
@@ -71,10 +105,15 @@ class PersonalityPackManager:
             return
         try:
             with zipfile.ZipFile(zip_path, "r") as zf:
-                manifest_data = zf.read("manifest.yaml")
-                manifest = yaml.safe_load(manifest_data)
+                names = zf.namelist()
+                if MANIFEST_NAME in names:
+                    manifest = json.loads(zf.read(MANIFEST_NAME))
+                else:
+                    manifest = yaml.safe_load(zf.read(LEGACY_MANIFEST_NAME))
                 if not isinstance(manifest, dict):
-                    logger.warning(f"Invalid manifest in ZIP pack {zip_path}: not a mapping")
+                    logger.warning(f"Invalid manifest in ZIP pack {zip_path}")
+                    return
+                if not self._valid_format(manifest):
                     return
                 name = _safe_pack_name(manifest.get("name", zip_path.stem), zip_path.stem)
 
@@ -83,29 +122,44 @@ class PersonalityPackManager:
                     "path": zip_path,
                     "type": manifest.get("type", "personality"),
                 }
-                phrases_dir = "phrases/"
-                phrase_files = [f for f in zf.namelist() if f.startswith(phrases_dir) and f.endswith((".yaml", ".yml"))]
+                phrase_files = [
+                    f for f in names
+                    if f.startswith("phrases/") and f.endswith((".json", ".yaml", ".yml"))
+                ]
                 self._phrases[name] = {}
                 for pf in phrase_files:
-                    data = yaml.safe_load(zf.read(pf))
+                    if pf.endswith(".json"):
+                        data = json.loads(zf.read(pf))
+                    else:
+                        data = yaml.safe_load(zf.read(pf))
                     if isinstance(data, dict):
                         self._phrases[name].update(data)
                 logger.info(f"Loaded ZIP pack: {name}")
         except Exception as e:
             logger.error(f"Failed to load ZIP pack {zip_path}: {e}")
 
+    @staticmethod
+    def _valid_format(manifest: dict) -> bool:
+        fmt = manifest.get("format")
+        if fmt and fmt != PERSONALITY_PACK_FORMAT:
+            logger.warning(
+                f"Pack '{manifest.get('name', '?')}' has unsupported format '{fmt}'"
+            )
+            return False
+        return True
+
     def _load_phrases(self, pack_name: str, phrases_dir: Path):
         if not phrases_dir.exists():
             return
         self._phrases[pack_name] = {}
-        for yaml_file in phrases_dir.glob("*.yaml"):
-            try:
-                with open(yaml_file, "r", encoding="utf-8") as f:
-                    data = yaml.safe_load(f)
-                if isinstance(data, dict):
-                    self._phrases[pack_name].update(data)
-            except Exception as e:
-                logger.warning(f"Failed to load {yaml_file}: {e}")
+        for json_file in sorted(phrases_dir.glob("*.json")):
+            data = _read_json(json_file)
+            if data:
+                self._phrases[pack_name].update(data)
+        for yaml_file in sorted(phrases_dir.glob("*.yaml")):
+            data = _read_yaml(yaml_file)
+            if data:
+                self._phrases[pack_name].update(data)
 
     def get_phrases(self, event_type: str) -> Optional[list]:
         if self._active_pack and self._active_pack in self._phrases:

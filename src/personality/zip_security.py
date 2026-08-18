@@ -36,8 +36,8 @@ def validate_zip_archive(path: Path) -> bool:
     try:
         with zipfile.ZipFile(path, "r") as zf:
             names = zf.namelist()
-            if "manifest.yaml" not in names:
-                logger.warning(f"ZIP missing manifest.yaml: {path}")
+            if "manifest.json" not in names and "manifest.yaml" not in names:
+                logger.warning(f"ZIP missing manifest: {path}")
                 return False
             for name in names:
                 if not is_safe_zip_member(name):

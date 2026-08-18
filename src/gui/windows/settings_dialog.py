@@ -344,7 +344,9 @@ class SettingsDialog(QDialog):
         pack_dir = Path(directory)
         if pack_dir.is_dir():
             for entry in sorted(pack_dir.iterdir()):
-                if entry.is_dir() and (entry / "manifest.yaml").exists():
+                if entry.is_dir() and (
+                        (entry / "manifest.json").exists()
+                        or (entry / "manifest.yaml").exists()):
                     self.pack_active.addItem(entry.name)
                 elif entry.is_file() and entry.suffix == ".zip":
                     self.pack_active.addItem(entry.stem)
