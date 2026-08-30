@@ -3,7 +3,7 @@ import time
 
 import pytest
 
-from src.memory.chroma_manager import _EmbeddingCache, _SentenceTransformerEmbedding
+from src.memory.chroma_manager import _EmbeddingCache, _ONNXEmbedding
 
 
 class TestEmbeddingCache:
@@ -336,7 +336,7 @@ class TestEmbeddingCacheThreadSafety:
 class TestEmbeddingFunctionCache:
     @pytest.fixture
     def mock_embedding(self):
-        emb = _SentenceTransformerEmbedding("test-model", cache_size=10)
+        emb = _ONNXEmbedding("test-model", cache_size=10)
 
         class MockModel:
             def encode(self, texts, **kwargs):

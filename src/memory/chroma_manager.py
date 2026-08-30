@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
 logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
 logging.getLogger("chromadb.telemetry").setLevel(logging.ERROR)
-logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
+logging.getLogger("onnxruntime").setLevel(logging.ERROR)
 
 from pathlib import Path
 from typing import Any, List
@@ -21,7 +21,6 @@ from typing import Any, List
 import chromadb
 from chromadb import Collection
 from chromadb.config import Settings
-from sentence_transformers import SentenceTransformer
 
 
 _DEFAULT_EMBEDDING_CACHE_SIZE = 1000
@@ -80,7 +79,38 @@ class _EmbeddingCache:
             }
 
 
-class _SentenceTransformerEmbedding:
+class _OnnxEncoder:
+    """Encoder ONNX (all-MiniLM-L6-v2) respaldado por ChromaDB.
+
+    Sustituye al backend anterior de sentence-transformers/torch produciendo
+    vectores equivalentes (mismas 384 dimensiones) con la funcion ONNX por
+    defecto de ChromaDB. El modelo se descarga una sola vez (~90MB) y se
+    cachea en ~/.cache/chroma.
+    """
+
+    def __init__(self, model_name: str):
+        self._model_name = model_name
+        self._fn = None
+
+    def _load(self):
+        from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
+
+        self._fn = DefaultEmbeddingFunction()
+        return self._fn
+
+    def encode(self, texts: List[str], normalize_embeddings: bool = True) -> Any:
+        import numpy as np
+
+        fn = self._fn if self._fn is not None else self._load()
+        arr = np.asarray(fn(texts), dtype=np.float32)
+        if normalize_embeddings:
+            norms = np.linalg.norm(arr, axis=1, keepdims=True)
+            norms[norms == 0] = 1e-12
+            arr = arr / norms
+        return arr
+
+
+class _ONNXEmbedding:
     def __init__(self, model_name: str, cache_size: int = _DEFAULT_EMBEDDING_CACHE_SIZE):
         self._model_name = model_name
         self._model = None
@@ -91,7 +121,7 @@ class _SentenceTransformerEmbedding:
         if self._model is None:
             with self._lock:
                 if self._model is None:
-                    self._model = SentenceTransformer(self._model_name)
+                    self._model = _OnnxEncoder(self._model_name)
 
         results: List[List[float] | None] = [None] * len(input)
         to_compute: List[int] = []
@@ -197,7 +227,7 @@ class ChromaManager:
         self._persist_path = Path(persist_path).resolve()
         self._embedding_model_name = embedding_model
         self._client: chromadb.PersistentClient | None = None
-        self._embedding_function: _SentenceTransformerEmbedding | None = None
+        self._embedding_function: _ONNXEmbedding | None = None
         self._collections: dict[str, Collection] = {}
         self._query_cache = _QueryCache()
 
@@ -209,7 +239,7 @@ class ChromaManager:
         try:
             self._suppress_telemetry()
             self._persist_path.mkdir(parents=True, exist_ok=True)
-            self._embedding_function = _SentenceTransformerEmbedding(
+            self._embedding_function = _ONNXEmbedding(
                 self._embedding_model_name
             )
             self._client = chromadb.PersistentClient(

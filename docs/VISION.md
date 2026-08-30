@@ -74,7 +74,7 @@ TomoDesk aprende de todos estos referentes: interacción física, conversación 
 
 | Subfase | Estado |
 |---|---|
-| **3.0 Lazy Loading SentenceTransformer** | ✅ Modelo de embeddings cargado bajo demanda, no al inicio |
+| **3.0 Lazy Loading de embeddings (ONNX)** | ✅ Modelo de embeddings ONNX cargado bajo demanda, no al inicio |
 | **3.1 Deferred Audio Reactivity** | ✅ sounddevice inicializado asíncronamente tras mostrar ventana |
 | **3.2 Background LLM Check** | ✅ Verificación de disponibilidad en thread separado |
 | **3.3 Parallel Initialization** | ✅ Componentes independientes inicializados con ThreadPoolExecutor |

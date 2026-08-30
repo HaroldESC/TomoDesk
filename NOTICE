@@ -12,9 +12,8 @@ with each dependency in your Python environment.
 | Library               | License        | Notes                                             |
 | --------------------- | -------------- | ------------------------------------------------- |
 | PySide6 (Qt for Python) | LGPL-3.0 / GPL-3.0 | Used via dynamic linking; the GUI layer must remain replaceable to stay LGPL-compatible. |
-| ChromaDB              | Apache-2.0     | Vector database for long-term / episodic memory.  |
-| sentence-transformers | Apache-2.0     | Embedding models for semantic search.             |
-| torch                 | BSD-3-Clause   | Backend for embedding models (installed via sentence-transformers). |
+| ChromaDB              | Apache-2.0     | Vector database for long-term / episodic memory. |
+| onnxruntime           | MIT            | ONNX inference for ChromaDB default embeddings (all-MiniLM-L6-v2). |
 | psutil                | BSD-3-Clause   | System metrics (CPU/RAM/process).                 |
 | python-dotenv         | BSD-3-Clause   | `.env` loading.                                   |
 | PyYAML                | MIT            | Configuration and data files parsing.             |

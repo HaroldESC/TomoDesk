@@ -171,7 +171,7 @@ src/
 
 | Layer | Technologies |
 |---|---|
-| **Backend** | Python 3.12+, SQLite, ChromaDB, sentence-transformers |
+| **Backend** | Python 3.12+, SQLite, ChromaDB (ONNX embeddings) |
 | **AI** | Ollama, OpenAI-compatible API (LM Studio, vLLM, Jan) |
 | **GUI** | PySide6 (Qt for Python) |
 | **OS Interaction** | pygetwindow, psutil, ctypes |
@@ -189,7 +189,7 @@ Run the test suite with:
 pytest
 ```
 
-Some ChromaDB-dependent tests may be slow (~12s for sentence-transformers import on first run). Heavy ML imports are lazy-loaded only when needed. Pass `-x -q` for quick smoke tests:
+Some ChromaDB-dependent tests may be slow on the first run (~90MB ONNX model download to `~/.cache/chroma`). Heavy imports are lazy-loaded only when needed. Pass `-x -q` for quick smoke tests:
 
 ```bash
 pytest -x -q --no-header
