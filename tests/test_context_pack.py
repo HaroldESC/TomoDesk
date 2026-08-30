@@ -190,3 +190,34 @@ def test_scan_packs_after_drop(tmp_path):
     mgr.scan_packs()
     assert mgr.list_packs() == []
     assert mgr.resolve_event("build.success", {}) is None
+
+
+def test_bundled_and_user_packs_dual_scan(tmp_path):
+    user = tmp_path / "user"
+    user.mkdir()
+    bundled = tmp_path / "bundled"
+    bundled.mkdir()
+    _write_pack(bundled, "bin", {"build.success": {"intent": "CELEBRATE"}})
+    _write_pack(user, "usr", {"music.detected": {"intent": "LISTENING"}})
+
+    mgr = ContextPackManager(_config("bin", "usr"), str(user),
+                             bundled_dir=str(bundled))
+    ids = sorted(p["id"] for p in mgr.list_packs())
+    assert ids == ["bin", "usr"]
+    assert mgr.resolve_event("build.success", {}) is not None
+    assert mgr.resolve_event("music.detected", {}) is not None
+
+
+def test_schema_fallback_to_bundled(tmp_path):
+    user = tmp_path / "user"
+    user.mkdir()
+    bundled = tmp_path / "bundled"
+    bundled.mkdir()
+    (bundled / "schema.json").write_text(json.dumps({"type": "object"}),
+                                         encoding="utf-8")
+    _write_pack(user, "usr", {"music.detected": {"intent": "LISTENING"}})
+
+    mgr = ContextPackManager(_config("usr"), str(user),
+                             bundled_dir=str(bundled))
+    assert mgr._get_schema() == {"type": "object"}
+    assert [p["id"] for p in mgr.list_packs()] == ["usr"]

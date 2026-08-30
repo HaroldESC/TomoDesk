@@ -7,6 +7,7 @@ from PySide6.QtGui import QPixmap, QPainter, QColor, QFont, QPen
 
 from src.core.intents import VisualIntent, normalize_intent
 from src.core.visual_state_resolver import VisualStateResolver
+from src.config.paths import resolve as resolve_path
 from src.gui.sprites.animation_controller import AnimationController
 from src.gui.sprites.sprite_loader import SpriteLoader, SpriteLoadError
 from src.gui.sprites.sprite_models import AnimationClip, ClipFrame, SpritePackData
@@ -41,7 +42,11 @@ class SpriteManager:
         sprite_cfg = ui_config.get("sprite", {})
 
         use_custom = sprite_cfg.get("use_custom", False)
-        custom_path = sprite_cfg.get("custom_path", "")
+        raw_custom = sprite_cfg.get("custom_path", "")
+        custom_path = (
+            str(resolve_path(self.config, "ui", "sprite", "custom_path"))
+            if raw_custom else ""
+        )
         active = sprite_cfg.get("active", "default")
 
         if use_custom and custom_path:

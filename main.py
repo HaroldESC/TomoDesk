@@ -10,12 +10,14 @@ os.environ["QT_LOGGING_RULES"] = "qt.qpa.window=false"
 from PySide6.QtCore import Qt, QTimer, QThread, Signal
 from concurrent.futures import ThreadPoolExecutor
 
+from src.config import paths
+
 logger = logging.getLogger(__name__)
 
 
 def _init_i18n(config):
     from src.config.i18n import I18nManager
-    i = I18nManager(config.get("paths", {}).get("locales", "data/locales"), default_lang="en")
+    i = I18nManager(str(paths.resolve(config, "paths", "locales")), default_lang="en")
     lang = i.detect_language(config.get("ui", {}).get("language", "auto"))
     i.set_language(lang)
     return i
@@ -23,7 +25,7 @@ def _init_i18n(config):
 
 def _init_db(config):
     from src.memory.database import DatabaseManager
-    db = DatabaseManager(config["database"]["sqlite_path"])
+    db = DatabaseManager(str(paths.resolve(config, "database", "sqlite_path")))
     db.initialize()
     return db
 
@@ -31,7 +33,7 @@ def _init_db(config):
 def _init_chroma(config):
     from src.memory.chroma_manager import ChromaManager
     cm = ChromaManager(
-        config["memory"]["chroma_persist_path"],
+        str(paths.resolve(config, "memory", "chroma_persist_path")),
         config["memory"]["embedding_model"],
     )
     cm.initialize()
@@ -40,8 +42,10 @@ def _init_chroma(config):
 
 def _init_pack_manager(config):
     from src.personality.personality_pack import PersonalityPackManager
+    bundled = paths.bundled_defaults_dir("data", "personality_packs")
     pm = PersonalityPackManager(
-        config.get("personality_packs", {}).get("directory", "data/personality_packs")
+        str(paths.resolve(config, "personality_packs", "directory")),
+        bundled_dir=str(bundled) if bundled else None,
     )
     pm.scan_packs()
     active_pack = config.get("personality_packs", {}).get("active_pack")
@@ -67,6 +71,7 @@ def _init_reminder_checker(memory_manager, config):
 
 def _initialize(config):
     global _db_manager
+    paths.ensure_user_dirs()
     from src.memory.memory import MemoryManager
     from src.core.state import StateManager
     from src.llm.proactive_policy import ProactivePolicy
@@ -99,7 +104,7 @@ def _initialize(config):
     proactive_policy = ProactivePolicy(config)
 
     comment_loader = CommentLoader(
-        config.get("paths", {}).get("comments_yaml", "data/comments.yaml"),
+        str(paths.resolve(config, "paths", "comments_yaml")),
         i18n=i18n,
     )
 

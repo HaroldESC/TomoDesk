@@ -124,3 +124,58 @@ class TestPersonalityPackManager:
         mgr.set_active_pack("Default")
         phrases = mgr.get_phrases("session_start")
         assert isinstance(phrases, list) and len(phrases) > 0
+
+    def test_bundled_and_user_packs_both_listed(self, tmp_path):
+        user = tmp_path / "user"
+        user.mkdir()
+        bundled = tmp_path / "bundled"
+        bundled.mkdir()
+
+        bp = bundled / "bundled_pack"
+        bp.mkdir()
+        (bp / "manifest.json").write_text(json.dumps({
+            "name": "bundled_pack", "format": "personality-pack-v1",
+            "type": "personality",
+        }), encoding="utf-8")
+
+        up = user / "user_pack"
+        up.mkdir()
+        (up / "manifest.json").write_text(json.dumps({
+            "name": "user_pack", "format": "personality-pack-v1",
+            "type": "personality",
+        }), encoding="utf-8")
+
+        mgr = PersonalityPackManager(str(user), bundled_dir=str(bundled))
+        mgr.scan_packs()
+        assert sorted(mgr.list_packs()) == ["bundled_pack", "user_pack"]
+
+    def test_user_pack_overrides_bundled_same_name(self, tmp_path):
+        user = tmp_path / "user"
+        user.mkdir()
+        bundled = tmp_path / "bundled"
+        bundled.mkdir()
+
+        bp = bundled / "mypack"
+        bp.mkdir()
+        (bp / "manifest.json").write_text(json.dumps({
+            "name": "mypack", "format": "personality-pack-v1",
+            "type": "personality", "version": "1.0.0",
+        }), encoding="utf-8")
+
+        up = user / "mypack"
+        up.mkdir()
+        (up / "manifest.json").write_text(json.dumps({
+            "name": "mypack", "format": "personality-pack-v1",
+            "type": "personality", "version": "2.0.0",
+        }), encoding="utf-8")
+        phrases_dir = up / "phrases"
+        phrases_dir.mkdir()
+        (phrases_dir / "greeting.json").write_text(
+            json.dumps({"greeting": ["User greeting"]}), encoding="utf-8")
+
+        mgr = PersonalityPackManager(str(user), bundled_dir=str(bundled))
+        mgr.scan_packs()
+        assert mgr.list_packs() == ["mypack"]
+        assert mgr.get_pack_info("mypack")["version"] == "2.0.0"
+        mgr.set_active_pack("mypack")
+        assert mgr.get_phrases("greeting") == ["User greeting"]

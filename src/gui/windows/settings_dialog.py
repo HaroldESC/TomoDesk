@@ -17,6 +17,14 @@ from PySide6.QtWidgets import (
 
 from src.config.config import get_config_path, save_config, validate_llm_endpoint
 from src.config.credentials import CredentialManager
+from src.config.paths import (
+    bundled_defaults_dir,
+    default_sprite_dir,
+    is_frozen,
+    log_dir,
+    resolve as resolve_path,
+    user_resolve,
+)
 from src.context.context_pack import ContextPackManager
 from src.gui.sprites.sprite_loader import SpriteLoader
 from src.gui.styles.styles import get_style_set
@@ -54,9 +62,12 @@ class SettingsDialog(QDialog):
         self.setWindowTitle(self.i18n.t("dialogs.settings.title"))
         self.setMinimumSize(760, 580)
         self.setStyleSheet(styles["dialog"])
-        self._sprite_loader = SpriteLoader(config)
+        self._sprite_loader = SpriteLoader(config, str(default_sprite_dir()))
+        ctx_bundled = bundled_defaults_dir("data", "context_packs")
         self.context_manager = context_manager or ContextPackManager(
-            config, config.get("context", {}).get("directory", "data/context_packs")
+            config,
+            str(resolve_path(config, "context", "directory")),
+            bundled_dir=str(ctx_bundled) if ctx_bundled else None,
         )
         self._dirty = False
         self._setup_ui()
@@ -322,7 +333,7 @@ class SettingsDialog(QDialog):
 
         self.pack_active = QComboBox()
         self.pack_active.setEditable(True)
-        self._populate_pack_list(packs.get("directory", "data/personality_packs"))
+        self._populate_pack_list(resolve_path(self.config, "personality_packs", "directory"))
         active = packs.get("active_pack")
         if active:
             idx = self.pack_active.findText(active)
@@ -429,14 +440,14 @@ class SettingsDialog(QDialog):
     def _on_browse_context_dir(self):
         path = QFileDialog.getExistingDirectory(
             self, self.i18n.t("dialogs.settings.context_directory"),
-            self.ctx_directory.text(),
+            str(user_resolve(self.ctx_directory.text())),
         )
         if path:
             self.ctx_directory.setText(path)
             self._on_reload_context_packs()
 
     def _on_reload_context_packs(self):
-        self.context_manager.packs_dir = Path(self.ctx_directory.text().strip())
+        self.context_manager.packs_dir = user_resolve(self.ctx_directory.text())
         self.context_manager.scan_packs()
         self._populate_context_list()
 
@@ -784,6 +795,16 @@ class SettingsDialog(QDialog):
         if reply != QMessageBox.Yes:
             return
         sprite_dir = self._sprite_loader.base_path / name
+        if is_frozen():
+            QMessageBox.warning(
+                self,
+                self.i18n.t("dialogs.settings.confirm_title"),
+                self.i18n.t(
+                    "dialogs.settings.sprite_delete_bundled",
+                    default="Bundled sprites cannot be deleted.",
+                ),
+            )
+            return
         try:
             if sprite_dir.is_dir():
                 shutil.rmtree(sprite_dir)
@@ -824,7 +845,8 @@ class SettingsDialog(QDialog):
 
     def _on_compact_db(self):
         from src.memory.database import DatabaseManager
-        db_path = self.config.get("database", {}).get("sqlite_path", "./data/tomodesk.db")
+        db_config = self.config.get("database", {}).get("sqlite_path", "./data/tomodesk.db")
+        db_path = str(user_resolve(db_config))
         try:
             db = DatabaseManager(db_path)
             db.initialize()
@@ -898,9 +920,9 @@ class SettingsDialog(QDialog):
                 logger.error(f"Import failed: {e}")
 
     def _on_open_logs_folder(self):
-        log_dir = Path(__file__).parent.parent.parent.parent / "data"
-        log_dir.mkdir(parents=True, exist_ok=True)
-        os.startfile(str(log_dir))
+        dir_path = log_dir()
+        dir_path.mkdir(parents=True, exist_ok=True)
+        os.startfile(str(dir_path))
 
     def _on_reset_hints(self):
         hints = self.config.setdefault("ui", {}).setdefault("hints", {})
@@ -910,14 +932,14 @@ class SettingsDialog(QDialog):
     def _on_browse_pack_dir(self):
         path = QFileDialog.getExistingDirectory(
             self, self.i18n.t("dialogs.settings.pack_directory"),
-            self.pack_directory.text(),
+            str(user_resolve(self.pack_directory.text())),
         )
         if path:
             self.pack_directory.setText(path)
             self._on_reload_packs()
 
     def _on_reload_packs(self):
-        self._populate_pack_list(self.pack_directory.text())
+        self._populate_pack_list(user_resolve(self.pack_directory.text()))
 
     def _on_delete_pack(self):
         name = self.pack_active.currentText()
@@ -953,7 +975,7 @@ class SettingsDialog(QDialog):
             if pm._active_pack == name:
                 pm.set_active_pack(None)
             pm.scan_packs()
-            self._populate_pack_list(self.pack_directory.text())
+            self._populate_pack_list(user_resolve(self.pack_directory.text()))
             self.pack_active.setCurrentIndex(-1)
             self.pack_delete_btn.setEnabled(False)
         except Exception as e:
@@ -967,7 +989,7 @@ class SettingsDialog(QDialog):
     def _on_browse_chroma_path(self):
         path = QFileDialog.getExistingDirectory(
             self, self.i18n.t("dialogs.settings.chroma_path"),
-            self.mem_chroma_path.text(),
+            str(user_resolve(self.mem_chroma_path.text())),
         )
         if path:
             self.mem_chroma_path.setText(path)
@@ -1260,7 +1282,7 @@ class SettingsDialog(QDialog):
         context = self.config.setdefault("context", {})
         directory = self.ctx_directory.text().strip() or "data/context_packs"
         context["directory"] = directory
-        self.context_manager.packs_dir = Path(directory)
+        self.context_manager.packs_dir = user_resolve(directory)
         self.context_manager.scan_packs()
         self.context_manager.set_active_packs(self._checked_context_ids())
 

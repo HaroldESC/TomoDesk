@@ -36,7 +36,7 @@
 - **Memory**:
   - Short-term: in-memory list of `{role, content, timestamp}` dicts
   - Mid-term: SQLite via `DatabaseManager` (thread-safe with `threading.Lock`)
-  - Long-term: ChromaDB with `sentence-transformers` (`all-MiniLM-L6-v2`, lazy-loaded)
+  - Long-term: ChromaDB with ONNX embeddings (`all-MiniLM-L6-v2` via ChromaDB `DefaultEmbeddingFunction`, lazy-loaded)
 - **Configuration**: YAML (`config.yaml`) + `.env` for secrets
 - **Internationalization**: custom JSON-based i18n module (`src/config/i18n.py`) with EN/ES
 - **Credential storage**: `keyring` library (Windows Credential Manager, macOS Keychain, Linux libsecret)
@@ -90,6 +90,7 @@
 src/
 ├── config/              # Configuration, credentials, i18n, logging
 │   ├── config.py        # load_config(), save_config(), get_config_path()
+│   ├── paths.py         # Path resolution: resource vs user/config dirs
 │   ├── credentials.py   # CredentialManager (keyring + env)
 │   ├── i18n.py          # I18nManager (translations)
 │   └── logging_config.py # setup_logging(), SensitiveDataFilter
@@ -312,6 +313,38 @@ class CredentialManager:
 
 **Log redaction**: `SensitiveDataFilter` in `logging_config.py` redacts patterns matching `api_key`, `token`, `secret`, `authorization`, `bearer`, `sk-`, `gsk_`, `hf_` from all log output.
 
+### 4.6 Path Resolution (`src/config/paths.py`)
+
+`config.yaml` keeps **relative paths** so it stays portable and readable. All path keys are resolved at use time through `src/config/paths.py`, which separates three bases:
+
+| Base | Dev (source tree) | Packaged (PyInstaller/AppImage) |
+|---|---|---|
+| `resource_dir()` | repo root | `sys._MEIPASS` (bundle, read-only) |
+| `user_data_dir()` | repo root | Windows `%LOCALAPPDATA%\TomoDesk`; Linux `$XDG_DATA_HOME/tomodesk` → `~/.local/share/tomodesk` |
+| `user_config_dir()` | repo root | Windows `%APPDATA%\TomoDesk`; Linux `$XDG_CONFIG_HOME/tomodesk` → `~/.config/tomodesk` |
+
+In dev all three equal the repo root, so behavior is unchanged.
+
+**Policy** — which config key resolves against which base:
+
+| Config key | Base | Default (relative) |
+|---|---|---|
+| `paths.locales` | resource | `data/locales` |
+| `paths.comments_yaml` | resource | `data/comments.yaml` |
+| `database.sqlite_path` | user | `data/tomodesk.db` |
+| `memory.chroma_persist_path` | user | `chroma_db` |
+| `personality_packs.directory` | user | `data/personality_packs` |
+| `context.directory` | user | `data/context_packs` |
+| `ui.sprite.custom_path` | user | `data/sprites/custom` |
+
+- Absolute paths written by the user pass through untouched.
+- Relative paths resolve against the chosen base; empty/missing values fall back to the default.
+- `resolve(config, *keys) -> Path` implements this; `user_resolve(raw)` / `resolve_raw(raw, base)` resolve arbitrary strings (used by the settings dialog).
+
+**Bundled packs (dual source)**: when packaged, `resource_dir()` may ship default packs. `PersonalityPackManager` and `ContextPackManager` accept an optional `bundled_dir`; they scan bundled first so **user packs win on name collision**, and `ContextPackManager._get_schema()` falls back to the bundled `schema.json` if the user dir has none. `bundled_defaults_dir(*rel)` returns `None` in dev to avoid double-scanning.
+
+**Config location when packaged**: `config.yaml` and `.env` live in `user_config_dir()`; on first launch the app bootstraps `config.yaml` from the bundled `resource_dir()/config.example.yaml`. `logging_config.setup_logging()` writes `tomodesk.log` to `log_dir()` (`user_data_dir()/data`). `main._initialize()` calls `ensure_user_dirs()` to pre-create the writable layout.
+
 ---
 
 ## 5. Event Monitoring & Spontaneous Comments
@@ -439,7 +472,7 @@ Episodic entries are retrieved into the prompt via semantic search (max distance
 
 ### Embeddings
 
-SentenceTransformer (`all-MiniLM-L6-v2`) loaded lazily via `_SentenceTransformerEmbedding.__call__()` with double-checked locking. First query triggers torch + ONNX model load (~80MB). `ChromaManager.ensure_loaded()` for explicit precaching.
+ONNX embeddings (`all-MiniLM-L6-v2`) loaded lazily via `_ONNXEmbedding.__call__()` with double-checked locking. Uses ChromaDB's `DefaultEmbeddingFunction`, so ChromaDB downloads the ONNX model once (~90MB) into `~/.cache/chroma`. `ChromaManager.ensure_loaded()` for explicit precaching.
 
 **Mock for tests**: `tests/mock_chroma.py` provides in-memory ChromaDB replacement.
 
@@ -815,11 +848,11 @@ Two triggers, independent but composable:
 
 ## 17. Startup Optimization (Phase 3)
 
-Startup time reduced from ~52s to ~13s (dominated by torch + sentence-transformers).
+Startup time reduced from ~52s to ~13s (dominated by heavyweight ML imports, previously torch + sentence-transformers).
 
 | Technique | Detail |
 |---|---|
-| Lazy embeddings | SentenceTransformer loaded on first ChromaDB query, not at init |
+| Lazy embeddings | ONNX embedding function loaded on first ChromaDB query, not at init |
 | Deferred audio | `sounddevice.query_devices()` moved to `QTimer.singleShot(0)` |
 | Background LLM check | `engine.check_availability()` in daemon thread after GUI visible |
 | Parallel init | `ThreadPoolExecutor(max_workers=5)` for I18n, DB, Chroma, Packs |
@@ -954,7 +987,7 @@ src/
 - GUI thread safety: use Qt Signals for cross-thread communication; never call GUI methods from background threads.
 - Test with `pytest`. Use `MockChroma` instead of real ChromaDB in tests.
 - Use `mock_i18n` (MagicMock) fixture for tests that don't need real translations.
-- Heavy imports (torch, chromadb, sentence-transformers) must be local, never at module level.
+- Heavy imports (chromadb, onnxruntime) must be local, never at module level.
 
 ---
 

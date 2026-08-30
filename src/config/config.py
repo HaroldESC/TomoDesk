@@ -1,7 +1,6 @@
 import logging
 import os
 import shutil
-import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -9,6 +8,11 @@ from dotenv import load_dotenv
 import yaml
 
 from src.config.credentials import CredentialManager
+from src.config.paths import (
+    default_config_path,
+    resource_dir,
+    user_config_dir,
+)
 from src.config.secure_files import secure_file
 
 logger = logging.getLogger(__name__)
@@ -52,12 +56,6 @@ def _apply_nested_defaults(config: dict) -> None:
             target.setdefault(key, value)
 
 
-def _get_project_root() -> Path:
-    if getattr(sys, "frozen", False):
-        return Path(sys.executable).parent
-    return Path(__file__).resolve().parent.parent.parent
-
-
 def _strip_sensitive(config: dict) -> dict:
     safe = dict(config)
     llm = safe.get("llm")
@@ -82,6 +80,7 @@ def validate_llm_endpoint(url: str) -> bool:
 def save_config(config: dict, path: Path | None = None) -> None:
     if path is None:
         path = get_config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
     safe = _strip_sensitive(config)
     tmp = path.with_suffix(".tmp")
     with open(tmp, "w", encoding="utf-8") as f:
@@ -95,17 +94,20 @@ def save_config(config: dict, path: Path | None = None) -> None:
 def load_config(config_path: Path | None = None) -> dict:
     global _CONFIG_PATH
 
-    env_path = _get_project_root() / ".env"
+    env_path = user_config_dir() / ".env"
     load_dotenv(dotenv_path=env_path)
     if env_path.exists():
         secure_file(env_path)
 
     if config_path is None:
-        config_path = _get_project_root() / "config.yaml"
+        config_path = default_config_path()
 
     if not config_path.exists():
         example = config_path.with_name("config.example.yaml")
+        if not example.exists():
+            example = resource_dir() / "config.example.yaml"
         if example.exists():
+            config_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(example, config_path)
             secure_file(config_path)
             logger.info(
@@ -115,7 +117,7 @@ def load_config(config_path: Path | None = None) -> dict:
             raise FileNotFoundError(
                 f"Configuration file not found at {config_path} "
                 f"and no {example.name} available to bootstrap from. "
-                "Ensure config.yaml exists at the project root."
+                "Ensure config.yaml (or config.example.yaml) is available."
             )
 
     with open(config_path, "r", encoding="utf-8") as f:
@@ -150,4 +152,4 @@ def get_config_path() -> Path:
     global _CONFIG_PATH
     if _CONFIG_PATH is not None:
         return _CONFIG_PATH
-    return Path("config.yaml").resolve()
+    return default_config_path().resolve()

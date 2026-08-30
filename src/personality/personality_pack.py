@@ -53,23 +53,36 @@ class PersonalityPackManager:
     packs installed before the JSON migration.
     """
 
-    def __init__(self, packs_dir: str = "data/personality_packs"):
+    def __init__(self, packs_dir: str = "data/personality_packs",
+                 bundled_dir: Optional[str] = None):
         self.packs_dir = Path(packs_dir)
         self.packs_dir.mkdir(parents=True, exist_ok=True)
+        self.bundled_dir = Path(bundled_dir) if bundled_dir else None
         self._packs: Dict[str, dict] = {}
         self._phrases: Dict[str, dict] = {}
         self._active_pack: Optional[str] = None
 
+    def _scan_sources(self) -> List[Path]:
+        sources = []
+        if self.bundled_dir is not None and self.bundled_dir != self.packs_dir:
+            # bundled primero: los packs del usuario ganan por sobreescritura
+            sources.append(self.bundled_dir)
+        sources.append(self.packs_dir)
+        return sources
+
     def scan_packs(self):
-        """Scan packs_dir for ZIP files and directories, load manifests."""
+        """Scan packs_dir (y bundled_dir si existe) por ZIP y directorios."""
         self._packs.clear()
         self._phrases.clear()
 
-        for entry in sorted(self.packs_dir.iterdir()):
-            if entry.is_dir():
-                self._load_pack(entry)
-            elif entry.suffix.lower() == ".zip":
-                self._load_zip_pack(entry)
+        for source in self._scan_sources():
+            if not source.is_dir():
+                continue
+            for entry in sorted(source.iterdir()):
+                if entry.is_dir():
+                    self._load_pack(entry)
+                elif entry.suffix.lower() == ".zip":
+                    self._load_zip_pack(entry)
 
         logger.info(f"Loaded {len(self._packs)} personality pack(s)")
 

@@ -37,22 +37,34 @@ class ContextPack:
 
 
 class ContextPackManager:
-    """Escanea ``packs_dir`` y resuelve eventos a intenciones visuales."""
+    """Escanea ``packs_dir`` (y ``bundled_dir`` si existe) y resuelve eventos a intenciones visuales."""
 
     def __init__(self, config: Optional[dict] = None,
-                 packs_dir: str = "data/context_packs"):
+                 packs_dir: str = "data/context_packs",
+                 bundled_dir: Optional[str] = None):
         self.config = config
         self.packs_dir = Path(packs_dir)
+        self.bundled_dir = Path(bundled_dir) if bundled_dir else None
         self._packs: Dict[str, ContextPack] = {}
         self._active_ids: List[str] = []
         self._schema: Optional[dict] = None
         self.scan_packs()
 
+    def _scan_sources(self) -> List[Path]:
+        sources = []
+        if self.bundled_dir is not None and self.bundled_dir != self.packs_dir:
+            # bundled primero: los packs del usuario ganan por sobreescritura
+            sources.append(self.bundled_dir)
+        sources.append(self.packs_dir)
+        return sources
+
     def scan_packs(self) -> None:
         self._packs.clear()
 
-        if self.packs_dir.exists():
-            for entry in sorted(self.packs_dir.iterdir()):
+        for source in self._scan_sources():
+            if not source.exists():
+                continue
+            for entry in sorted(source.iterdir()):
                 try:
                     if entry.is_dir():
                         manifest_path = entry / MANIFEST_NAME
@@ -179,6 +191,8 @@ class ContextPackManager:
     def _get_schema(self) -> Optional[dict]:
         if self._schema is None:
             schema_path = self.packs_dir / "schema.json"
+            if not schema_path.exists() and self.bundled_dir is not None:
+                schema_path = self.bundled_dir / "schema.json"
             if schema_path.exists():
                 try:
                     with open(schema_path, encoding="utf-8") as f:

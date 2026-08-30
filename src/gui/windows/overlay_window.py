@@ -10,6 +10,7 @@ from PySide6.QtGui import QPainter, QPaintEvent, QGuiApplication, QCursor, QWhee
 from PySide6.QtWidgets import QWidget, QApplication, QMenu
 
 from src.config.config import get_config_path
+from src.config.paths import default_sprite_dir, resolve, bundled_defaults_dir
 from src.context.context_pack import ContextPackManager
 from src.core.intents import VisualIntent
 from src.core.visual_state_resolver import VisualStateResolver
@@ -64,11 +65,16 @@ class OverlayWindow(QWidget):
         self.dragging = False
         self.drag_position = QPoint()
 
+        ctx_bundled = bundled_defaults_dir("data", "context_packs")
         self.context_manager = ContextPackManager(
-            config, config.get("context", {}).get("directory", "data/context_packs")
+            config,
+            str(resolve(config, "context", "directory")),
+            bundled_dir=str(ctx_bundled) if ctx_bundled else None,
         )
         self.resolver = VisualStateResolver(self.context_manager)
-        self.sprite_manager = SpriteManager(config, "data/sprites", resolver=self.resolver)
+        self.sprite_manager = SpriteManager(
+            config, str(default_sprite_dir()), resolver=self.resolver
+        )
         self.sprite_manager.frame_timer.setParent(self)
         self._last_sprite_key = (None, None)
         def _on_sprite_tick():
@@ -349,7 +355,7 @@ class OverlayWindow(QWidget):
         for url in event.mimeData().urls():
             filepath = Path(url.toLocalFile())
             if filepath.suffix.lower() == ".zip" and self._validate_zip(filepath):
-                dest = Path(self.config.get("personality_packs", {}).get("directory", "data/personality_packs")) / filepath.name
+                dest = resolve(self.config, "personality_packs", "directory") / filepath.name
                 try:
                     shutil.copy2(str(filepath), str(dest))
                 except OSError as e:

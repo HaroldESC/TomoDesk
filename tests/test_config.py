@@ -104,7 +104,43 @@ class TestLoadConfig:
         assert target.exists()
         assert loaded["llm"]["model"] == "qwen"
 
-    def test_load_config_missing_config_and_example_raises(self, tmp_path):
+    def test_load_config_missing_config_and_example_raises(self, tmp_path, monkeypatch):
         target = tmp_path / "config.yaml"
+        empty = tmp_path / "no_example_here"
+        empty.mkdir()
+        monkeypatch.setattr("src.config.config.resource_dir", lambda: empty)
         with pytest.raises(FileNotFoundError):
             load_config(target)
+
+    def test_load_config_bootstraps_bundled_example(self, tmp_path, monkeypatch):
+        import src.config.config as config_mod
+        bundle = tmp_path / "bundle"
+        bundle.mkdir()
+        (bundle / "config.example.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "llm": {"model": "qwen2"},
+                    "memory": {"max_short_term_messages": 20},
+                    "personality": {"pack": "tomo"},
+                    "modes": {"proactive": True},
+                    "database": {},
+                }
+            ),
+            encoding="utf-8",
+        )
+        cfg_dir = tmp_path / "user_config"
+        monkeypatch.setattr(config_mod, "resource_dir", lambda: bundle)
+        monkeypatch.setattr(config_mod, "default_config_path",
+                            lambda: cfg_dir / "config.yaml")
+        config_mod._CONFIG_PATH = None
+        try:
+            loaded = config_mod.load_config()
+            assert loaded["llm"]["model"] == "qwen2"
+            created = cfg_dir / "config.yaml"
+            assert created.exists()
+            assert loaded["database"]["sqlite_path"] == "./data/tomodesk.db"
+            assert loaded["database"]["sqlite_path"] not in yaml.safe_load(
+                created.read_text(encoding="utf-8")
+            ).get("database", {})
+        finally:
+            config_mod._CONFIG_PATH = None

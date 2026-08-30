@@ -3,6 +3,8 @@ import re
 import sys
 from pathlib import Path
 
+from src.config.paths import log_dir as default_log_dir
+
 
 _initialized = False
 
@@ -54,7 +56,7 @@ def setup_logging(log_dir: Path | None = None) -> None:
     _initialized = True
 
     if log_dir is None:
-        log_dir = Path(__file__).resolve().parent.parent.parent / "data"
+        log_dir = default_log_dir()
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / "tomodesk.log"
 
