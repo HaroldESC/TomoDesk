@@ -81,6 +81,7 @@ class TestFrozenWindows:
         monkeypatch.setattr(sys, "frozen", True, raising=False)
         monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path / "bundle"),
                             raising=False)
+        monkeypatch.setattr(sys, "platform", "win32")
         (tmp_path / "bundle").mkdir()
         monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
         monkeypatch.setenv("APPDATA", str(tmp_path / "roaming"))
