@@ -60,8 +60,11 @@ Thumbs.db
 
 # Build artifacts (PyInstaller, Nuitka, etc.)
 dist/
-build/
+build/tomodesk/
+build/version_info.txt
+build/_inspect_pyz.py
 *.spec
+!tomodesk.spec
 
 # Coverage / reports
 htmlcov/

@@ -263,8 +263,12 @@ class _InitWorker(QThread):
 def run_gui(config):
     from PySide6.QtWidgets import QApplication
     from PySide6.QtCore import QTimer
+    from PySide6.QtGui import QIcon
 
     app = QApplication(sys.argv)
+    icon_path = paths.resource_dir() / "tomodesk.png"
+    if icon_path.exists():
+        app.setWindowIcon(QIcon(str(icon_path)))
     try:
         import ctypes
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("tomodesk.tomo.1.0")
@@ -527,6 +531,7 @@ def _close_db():
 def main():
     parser = argparse.ArgumentParser(description="TomoDesk - Desktop Companion")
     parser.add_argument("--gui", action="store_true", help="Launch GUI mode")
+    parser.add_argument("--cli", action="store_true", help="Launch console/CLI mode (default in source)")
     args = parser.parse_args()
 
     from src.config.logging_config import setup_logging
@@ -534,7 +539,8 @@ def main():
     setup_logging()
     config = load_config()
 
-    if args.gui:
+    packaged = paths.is_frozen()
+    if args.gui or (packaged and not args.cli):
         run_gui(config)
     else:
         run_cli(config)
