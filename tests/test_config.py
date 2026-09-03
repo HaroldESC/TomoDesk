@@ -75,6 +75,23 @@ class TestLoadConfig:
         assert loaded["llm"]["provider"] == "ollama"
         assert loaded["llm"]["endpoint"] == "http://localhost:11434"
 
+    def test_load_config_fills_llama_cpp_defaults(self, tmp_path):
+        config = {
+            "llm": {"model": "qwen"},
+            "memory": {},
+            "personality": {},
+            "modes": {},
+            "database": {},
+        }
+        path = tmp_path / "config.yaml"
+        path.write_text(yaml.safe_dump(config), encoding="utf-8")
+        loaded = load_config(path)
+        llm_cpp = loaded["llm"]["llama_cpp"]
+        assert llm_cpp["model_path"].endswith(".gguf")
+        assert llm_cpp["n_ctx"] == 4096
+        assert llm_cpp["model_repo"]
+        assert llm_cpp["model_file"].endswith(".gguf")
+
     def test_load_config_missing_section_created(self, tmp_path):
         config = {"database": {}, "modes": {}, "personality": {}}
         path = tmp_path / "config.yaml"

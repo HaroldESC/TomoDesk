@@ -6,13 +6,14 @@ import sys
 import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QThread, Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFileDialog,
     QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget,
-    QMessageBox, QPushButton, QScrollArea, QSlider, QSpinBox,
-    QStackedWidget, QTextEdit, QVBoxLayout, QWidget, QListWidgetItem,
+    QMessageBox, QProgressDialog, QPushButton, QScrollArea, QSlider,
+    QSpinBox, QStackedWidget, QTextEdit, QVBoxLayout, QWidget,
+    QListWidgetItem,
 )
 
 from src.config.config import get_config_path, save_config, validate_llm_endpoint
@@ -45,6 +46,42 @@ def _force_taskbar_entry(widget):
 
 logger = logging.getLogger(__name__)
 _creds = CredentialManager()
+
+
+class _ModelDownloadWorker(QThread):
+    """Descarga el GGUF en segundo plano sin bloquear el hilo de UI."""
+
+    progress = Signal(int, int)
+    done = Signal(object)
+    error = Signal(str)
+
+    def __init__(self, config, parent=None):
+        super().__init__(parent)
+        self._config = config
+        self._cancelled = False
+
+    def request_cancel(self):
+        self._cancelled = True
+
+    def run(self):
+        from src.llm import download as dl
+
+        def _progress(done, total):
+            if self._cancelled:
+                raise _DownloadCancelled()
+            self.progress.emit(done, total)
+
+        try:
+            dest = dl.download_model(self._config, progress=_progress)
+            self.done.emit(dest)
+        except _DownloadCancelled:
+            self.error.emit("cancelled")
+        except Exception as exc:
+            self.error.emit(str(exc))
+
+
+class _DownloadCancelled(Exception):
+    """Señal interna para abortar una descarga en curso."""
 
 
 class SettingsDialog(QDialog):
@@ -522,7 +559,7 @@ class SettingsDialog(QDialog):
         llm = self.config.get("llm", {})
 
         self.llm_provider = QComboBox()
-        self.llm_provider.addItems(["ollama", "openai_compatible"])
+        self.llm_provider.addItems(["ollama", "openai_compatible", "llama_cpp"])
         self.llm_provider.setCurrentText(llm.get("provider", "ollama"))
         self._add_row(layout, self.i18n.t("dialogs.settings.provider"), self.llm_provider)
 
@@ -541,6 +578,112 @@ class SettingsDialog(QDialog):
         self.llm_timeout.setSuffix("s")
         self.llm_timeout.setValue(llm.get("timeout", 60))
         self._add_row(layout, self.i18n.t("dialogs.settings.llm_timeout"), self.llm_timeout)
+
+        self._build_llama_cpp(layout)
+
+    def _build_llama_cpp(self, layout):
+        llm_cpp = self.config.get("llm", {}).get("llama_cpp", {}) or {}
+
+        path_row = QHBoxLayout()
+        self.llama_path = QLineEdit(llm_cpp.get("model_path", ""))
+        path_row.addWidget(self.llama_path, stretch=1)
+        browse_btn = QPushButton(self.i18n.t("dialogs.settings.browse"))
+        browse_btn.clicked.connect(self._on_browse_llama_path)
+        path_row.addWidget(browse_btn)
+        path_widget = QWidget()
+        path_widget.setLayout(path_row)
+        self._add_row(layout, self.i18n.t("dialogs.settings.model_path"), path_widget)
+
+        self.llama_ctx = QSpinBox()
+        self.llama_ctx.setRange(256, 131072)
+        self.llama_ctx.setSingleStep(512)
+        self.llama_ctx.setValue(llm_cpp.get("n_ctx", 4096))
+        self._add_row(layout, self.i18n.t("dialogs.settings.n_ctx"), self.llama_ctx)
+
+        dl_row = QHBoxLayout()
+        self.llama_download_btn = QPushButton(
+            self.i18n.t("dialogs.settings.download_model")
+        )
+        self.llama_download_btn.clicked.connect(self._on_download_model)
+        dl_row.addWidget(self.llama_download_btn, stretch=1)
+        dl_widget = QWidget()
+        dl_widget.setLayout(dl_row)
+        self._add_row(layout, self.i18n.t("dialogs.settings.download_model_group"), dl_widget)
+
+        note = QLabel(self.i18n.t("dialogs.settings.llama_license_note"))
+        note.setWordWrap(True)
+        layout.addWidget(note)
+
+    def _on_browse_llama_path(self):
+        current = self.llama_path.text().strip() or ""
+        start = current if current else str(user_resolve("data/models"))
+        path, _ = QFileDialog.getOpenFileName(
+            self, self.i18n.t("dialogs.settings.model_path"), start, "GGUF (*.gguf)"
+        )
+        if path:
+            self.llama_path.setText(path)
+
+    def _on_download_model(self):
+        from src.llm import download as dl
+
+        dest = dl.model_path_from_config(self.config)
+        if dest.exists():
+            QMessageBox.information(
+                self,
+                self.i18n.t("dialogs.settings.title"),
+                self.i18n.t("dialogs.settings.model_already_downloaded"),
+            )
+            return
+
+        progress = QProgressDialog(
+            self.i18n.t("dialogs.settings.download_progress_title"),
+            self.i18n.t("dialogs.settings.cancel"),
+            0, 100, self,
+        )
+        progress.setWindowModality(Qt.WindowModal)
+        progress.setMinimumDuration(0)
+        progress.setValue(0)
+
+        worker = _ModelDownloadWorker(self.config)
+
+        def _on_progress(done, total):
+            if total and total > 0:
+                progress.setRange(0, 100)
+                progress.setValue(int(done * 100 / total))
+                progress.setLabelText(
+                    f"{int(done * 100 / total)}% ({done}/{total} bytes)"
+                )
+            else:
+                progress.setRange(0, 0)
+                progress.setLabelText(f"{done} bytes")
+
+        def _on_done(dest):
+            progress.setValue(100)
+            progress.close()
+            self.llama_path.setText(str(dest))
+            QMessageBox.information(
+                self,
+                self.i18n.t("dialogs.settings.title"),
+                self.i18n.t("dialogs.settings.model_downloaded", path=dest),
+            )
+
+        def _on_error(error):
+            if error == "cancelled":
+                progress.close()
+                return
+            progress.close()
+            QMessageBox.warning(
+                self,
+                self.i18n.t("dialogs.settings.title"),
+                self.i18n.t("dialogs.settings.model_download_error", error=error),
+            )
+
+        worker.progress.connect(_on_progress)
+        worker.done.connect(_on_done)
+        worker.error.connect(_on_error)
+        progress.canceled.connect(worker.request_cancel)
+        progress.show()
+        worker.start()
 
     def _build_memory_general(self, layout):
         mem = self.config.get("memory", {})
@@ -1236,6 +1379,11 @@ class SettingsDialog(QDialog):
 
         if "api_key" in llm:
             del llm["api_key"]
+
+        llm.setdefault("llama_cpp", {})
+        llm["llama_cpp"]["model_path"] = self.llama_path.text().strip() or \
+            "data/models/llama-3.2-1B-Instruct-Q4_K_M.gguf"
+        llm["llama_cpp"]["n_ctx"] = self.llama_ctx.value()
 
         mem = self.config.setdefault("memory", {})
         mem["max_short_term_messages"] = self.mem_short_term.value()

@@ -363,7 +363,8 @@ class MainWindow(QMainWindow):
             self.i18n.t("app.about_title"),
             f"<h3>TomoDesk v0.1.0</h3>"
             f"<p>{self.i18n.t('app.about_text', name=self.config['personality']['name'], model=self.config['llm']['model'])}</p>"
-            f"<hr><p><small>Powered by PySide6 and Ollama</small></p>",
+            f"<hr><p><small>Powered by PySide6 and Ollama</small></p>"
+            f"<p><small>{self.i18n.t('app.model_license_note')}</small></p>",
         )
 
     def _toggle_overlay(self):

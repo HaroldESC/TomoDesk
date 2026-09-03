@@ -35,6 +35,12 @@ _NESTED_DEFAULTS: dict[str, dict] = {
         "endpoint": "http://localhost:11434",
         "timeout": 60,
         "max_requests_per_minute": 60,
+        "llama_cpp": {
+            "model_path": "data/models/llama-3.2-1B-Instruct-Q4_K_M.gguf",
+            "n_ctx": 4096,
+            "model_repo": "ggml-org/llama-3.2-1B-Instruct-GGUF",
+            "model_file": "llama-3.2-1B-Instruct-Q4_K_M.gguf",
+        },
     },
     "personality": {
         "name": "TomoDesk",

@@ -345,6 +345,8 @@ In dev all three equal the repo root, so behavior is unchanged.
 
 **Config location when packaged**: `config.yaml` and `.env` live in `user_config_dir()`; on first launch the app bootstraps `config.yaml` from the bundled `resource_dir()/config.example.yaml`. `logging_config.setup_logging()` writes `tomodesk.log` to `log_dir()` (`user_data_dir()/data`). `main._initialize()` calls `ensure_user_dirs()` to pre-create the writable layout.
 
+**Entry point when packaged**: the frozen binary launches GUI by default (`run_gui()`) — no `--gui` needed; `--cli` forces console mode. In source mode behavior is unchanged (GUI requires an explicit `--gui`). `--gui` remains accepted in both modes for compatibility.
+
 ---
 
 ## 5. Event Monitoring & Spontaneous Comments
@@ -496,6 +498,7 @@ class LLMProvider(ABC):
 |---|---|---|
 | `OllamaProvider` | `src/llm/llm.py` | Ollama Python client |
 | `OpenAICompatibleProvider` | `src/llm/llm.py` | `openai` package (LM Studio, vLLM, Groq, Jan) |
+| `LlamaCppProvider` | `src/llm/llama_cpp.py` | `llama-cpp-python` (optional, local GGUF) |
 
 **Provider factory:**
 
@@ -512,11 +515,36 @@ def create_provider(config: Dict, api_key: str | None = None) -> LLMProvider:
 
 ```yaml
 llm:
-  provider: ollama               # ollama | openai_compatible
+  provider: ollama               # ollama | openai_compatible | llama_cpp
   model: llama3.2:1b
   endpoint: http://localhost:11434
   timeout: 60
 ```
+
+**Llama.cpp provider** (`llama_cpp`): depende de `llama-cpp-python` (wheel CPU),
+que es una dependencia **opcional** — no está en `requirements.txt`. Se instala
+por separado (versión pinneada) con `requirements-llama.txt`. Si no está
+instalada, `is_available()` devuelve `False` y `generate`/`generate_stream`
+lanzan `LLMError`. Config adicional bajo `llm.llama_cpp`:
+
+```yaml
+llm:
+  provider: llama_cpp
+  llama_cpp:
+    model_path: data/models/llama-3.2-1B-Instruct-Q4_K_M.gguf  # relativo a user_data_dir()
+    n_ctx: 4096
+    n_threads: 4            # opcional
+    model_repo: ggml-org/llama-3.2-1B-Instruct-GGUF  # para la descarga
+    model_file: llama-3.2-1B-Instruct-Q4_K_M.gguf
+```
+
+El GGUF se descarga de forma **explícita** (comando `/model download` o botón en
+Ajustes → LLM) a `data/models/` mediante `src/llm/download.py` (stdlib
+`urllib`, sin dependencias nuevas). La descarga es manual, no automática.
+
+**Licencia del modelo**: el Llama 3.2 GGUF por defecto se distribuye bajo la
+Licencia de Comunidad Llama (no MIT); se documenta en `README.md` y en el
+diálogo "Acerca de".
 
 ---
 

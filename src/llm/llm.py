@@ -191,5 +191,24 @@ def create_provider(config: Dict, api_key: str | None = None) -> LLMProvider:
             api_key=api_key or "not-needed",
             max_requests_per_minute=max_requests_per_minute,
         )
+    elif provider_type == "llama_cpp":
+        from src.config import paths
+        from src.llm.llama_cpp import LlamaCppProvider
+
+        llm_cpp = llm_config.get("llama_cpp", {}) or {}
+        raw_path = llm_cpp.get("model_path") or "data/models/"
+        model_path = paths.user_resolve(raw_path)
+        n_ctx = llm_cpp.get("n_ctx", 4096)
+        kwargs = {
+            k: llm_cpp[k]
+            for k in ("n_threads", "verbose")
+            if k in llm_cpp
+        }
+        return LlamaCppProvider(
+            model_path=model_path,
+            n_ctx=n_ctx,
+            max_requests_per_minute=max_requests_per_minute,
+            **kwargs,
+        )
     else:
         raise ValueError(f"Unknown LLM provider: {provider_type}")

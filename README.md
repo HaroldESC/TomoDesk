@@ -25,7 +25,7 @@ TomoDesk is a desktop companion application that lives in your system tray and d
 
 ### Key Features
 
-- Conversational AI with local LLMs (Ollama, LM Studio, vLLM, Jan)
+- Conversational AI with local LLMs (Ollama, LM Studio, vLLM, Jan, or embedded llama.cpp)
 - Multi-level memory: short-term, mid-term (SQLite), long-term and episodic (ChromaDB)
 - OS event monitoring: active window, idle time, CPU/RAM usage
 - Proactive comments based on system events
@@ -43,7 +43,25 @@ TomoDesk is a desktop companion application that lives in your system tray and d
 ### Requirements
 
 - Python 3.12+ (Python 3.14 tested; ChromaDB may need 3.12/3.13 on some systems)
-- [Ollama](https://ollama.com/) with a pulled model (e.g., `llama3.2:1b`)
+- One of:
+  - [Ollama](https://ollama.com/) with a pulled model (e.g., `llama3.2:1b`)
+  - An OpenAI-compatible server (LM Studio, vLLM, Jan)
+  - `llama-cpp-python` (optional, CPU wheel) to run a local GGUF model embedded in the app
+
+### Optional: embedded llama.cpp model
+
+To use TomoDesk's self-contained local provider you need two things:
+
+```bash
+pip install -r requirements-llama.txt   # optional, pinned CPU wheel of llama-cpp-python
+```
+
+Then set `llm.provider: llama_cpp` in `config.yaml` and download a model with the
+`/model download` chat command or the button in **Settings → LLM → Local model**.
+The GGUF is saved to `data/models/`. See the [License](#license) note about the
+default model. (`llama-cpp-python` is not part of the mandatory
+`requirements.txt` so the base binary stays lean; install `requirements-llama.txt`
+only if you want the embedded provider.)
 
 ### Setup
 
@@ -69,7 +87,7 @@ cp config.example.yaml config.yaml
 
 The default configuration lives in `config.yaml` (auto-generated from `config.example.yaml` on first run). Common settings include:
 
-- LLM provider and model (Ollama or OpenAI-compatible local servers such as LM Studio, vLLM, or Jan)
+- LLM provider and model (Ollama, OpenAI-compatible local servers such as LM Studio, vLLM, or Jan, or embedded llama.cpp)
 - UI language (`auto`/`en`/`es`)
 - Overlay behavior, speech bubble style, audio-reactive dancing, and window-sitting
 - Personality packs and proactive comment resources
@@ -110,6 +128,7 @@ Type `/help` in chat to see all available commands:
 - `/proactive on/off/focus/unfocus` — control proactive comments
 - `/mood` — view emotional state
 - `/episodic` — memory statistics
+- `/model [status|download|uninstall]` — manage the local llama.cpp GGUF model
 - `/gui` — info about GUI mode
 
 ## Architecture
@@ -172,7 +191,7 @@ src/
 | Layer | Technologies |
 |---|---|
 | **Backend** | Python 3.12+, SQLite, ChromaDB (ONNX embeddings) |
-| **AI** | Ollama, OpenAI-compatible API (LM Studio, vLLM, Jan) |
+| **AI** | Ollama, OpenAI-compatible API (LM Studio, vLLM, Jan), embedded llama.cpp (llama-cpp-python, optional) |
 | **GUI** | PySide6 (Qt for Python) |
 | **OS Interaction** | pygetwindow, psutil, ctypes |
 | **Audio** | sounddevice, numpy |
@@ -200,3 +219,14 @@ If ChromaDB tests fail with native crashes on newer Python, retry with Python 3.
 ## License
 
 Distributed under the MIT License. See `LICENSE` for more information.
+
+### Model licenses
+
+TomoDesk downloads chat models on demand (embedded llama.cpp provider). These
+models are **not** covered by the MIT license of this repository and carry
+their own terms:
+
+- The default `llama3.2` GGUF is released by Meta under the **Llama Community
+  License** (<https://llama.com/license/>), which allows commercial use and
+  redistribution under certain conditions. Review it before distributing or
+  further developing from the model weights.

@@ -1,0 +1,12 @@
+# Dependencias OPCIONALES para el provider local llama_cpp (Fase 3).
+#
+# NO es parte de requirements.txt: se instala solo cuando se quiere usar el
+# modelo embebido via llama.cpp sin Ollama/OpenAI. La base del binario no crece
+# porque esta dependencia no se bundlea en los builds "estandar".
+#
+#   pip install -r requirements-llama.txt
+#
+# Esta linea instala la wheel CPU estandar de llama-cpp-python. Para builds con
+# aceleracion (CUDA/Metal/Vulkan) consulta la documentacion del proyecto y usa
+# el indice correspondiente (p.ej. pip install --index-url=... llama-cpp-python).
+llama-cpp-python==0.3.35

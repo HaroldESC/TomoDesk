@@ -1,7 +1,11 @@
 import datetime
+import logging
 from typing import Dict, Optional, Tuple
 
+from src.llm import download
 from src.memory.memory import MemoryManager
+
+logger = logging.getLogger(__name__)
 
 
 def handle_command(
@@ -32,6 +36,7 @@ def handle_command(
         "/mood": cmd_mood,
         "/episodic": cmd_episodic_stats,
         "/gui": cmd_gui,
+        "/model": cmd_model,
     }
 
     handler = handlers.get(command)
@@ -468,3 +473,59 @@ def cmd_episodic_stats(args, memory_manager, config, **kwargs) -> Tuple[Optional
         lines.append(f"  [{m['source']}] {preview}")
 
     return ("\n".join(lines), True)
+
+
+def cmd_model(args, memory_manager, config, **kwargs) -> Tuple[Optional[str], bool]:
+    i18n = kwargs.get('i18n')
+    action = args.strip().lower() or "status"
+
+    if action == "status":
+        exists = download.model_exists(config)
+        path = download.model_path_from_config(config)
+        lib_ok = _llama_cpp_installed()
+        lines = [
+            i18n.t("commands.model_status_header"),
+            i18n.t("commands.model_path", path=path),
+            i18n.t("commands.model_library", installed=lib_ok),
+            i18n.t("commands.model_present", present=exists),
+        ]
+        if not exists:
+            lines.append(i18n.t("commands.model_status_download_hint"))
+        return ("\n".join(lines), True)
+
+    if action == "download":
+        if download.model_exists(config):
+            return (i18n.t("commands.model_already_downloaded"), True)
+
+        def _progress(done, total):
+            if total and total > 0:
+                pct = int(done * 100 / total)
+                print(f"\r  {pct}% ({done}/{total} bytes)", end="", flush=True)
+            else:
+                print(f"\r  {done} bytes", end="", flush=True)
+
+        try:
+            print(i18n.t("commands.model_downloading"))
+            dest = download.download_model(config, progress=_progress)
+            print()
+            return (i18n.t("commands.model_downloaded", path=dest), True)
+        except Exception as exc:
+            logger.exception("Fallo al descargar el modelo")
+            return (i18n.t("commands.model_download_error", error=exc), True)
+
+    if action in ("uninstall", "delete"):
+        dest = download.model_path_from_config(config)
+        if dest.exists():
+            dest.unlink()
+            return (i18n.t("commands.model_deleted", path=dest), True)
+        return (i18n.t("commands.model_not_present"), True)
+
+    return (i18n.t("commands.model_usage"), True)
+
+
+def _llama_cpp_installed() -> bool:
+    try:
+        import llama_cpp  # noqa: F401
+        return True
+    except ImportError:
+        return False

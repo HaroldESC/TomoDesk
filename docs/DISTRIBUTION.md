@@ -52,15 +52,33 @@ Hecho (`src/config/paths.py`):
 - Packs embebidos: `bundled_dir` en `PersonalityPackManager`/`ContextPackManager` (doble origen; el usuario gana en colisión, schema de context packs cae al bundle).
 - Sprite por defecto desde `resource_dir()/data/sprites`; `custom_path` resuelto contra datos de usuario. Logs → `user_data_dir()/data`. `ensure_user_dirs()` al arrancar.
 
-### Fase 2 — PyInstaller: Windows + AppImage
-- `.spec` con `collect_all` para PySide6 y binarios nativos (chromadb/duckdb/onnxruntime, keyring).
-- Windows: one-folder + Inno Setup → `.exe`.
-- Linux: one-folder → appimagetool → AppImage (+ `.desktop` con icono). Deps Qt ya instaladas en CI.
+### Fase 2 — PyInstaller: Windows + AppImage ✅ (2026-09-01)
 
-### Fase 3 — Provider llama.cpp + modelo descargable
-- Nuevo provider `llama_cpp` en `create_provider` (`src/llm/llm.py`), import perezoso de `llama-cpp-python` (wheel CPU, versión pinneada), ruta del modelo en config.
-- Descarga de GGUF Q4_K_M al primer arranque desde HuggingFace a `data/models/`.
-- Un único binario; asset "full" opcional.
+Hecho:
+- `tomodesk.spec` versionado (raíz): one-dir, `console=False`, `collect_all` para PySide6, keyring y tokenizers; `collect_submodules("chromadb")` + módulos de la pila de ejecución (namespace `chromadb.execution.executor` — pkgutil no lo recorre) + `collect_data_files("chromadb")` (migraciones `.sql` que chromadb carga con `importlib_resources`).
+- Excluidos los pesos de la Fase 0 (`torch`, `scipy`, `sentence_transformers`, `transformers`, etc.) que chromadb intenta importar por `importlib.import_module` para su función OpenCLIP; **no** se excluye `tokenizers` (tokenizador real del modelo ONNX all-MiniLM-L6-v2).
+- Recursos de solo lectura embebidos: `data/locales/`, sprites (schema + `default/`), context packs (schema + `vscode/`), personality pack `default/`, `config.example.yaml` y `tomodesk.png` (icono de ventana). Nada de datos de usuario (db, chroma_db, logs) viaja en el bundle.
+- Icono programático: `build/generate_icon.py` dibuja el icono (acento `#7B85D6` + "T", estilo tray) y genera `build/assets/tomodesk.ico` (16–256px, ICO multi-PNG) y `tomodesk.png`. `build/make_version_info.py` genera `build/version_info.txt` (VSVersionInfo) desde `__version__`.
+- Entry point empaquetado: el binario lanza **GUI por defecto** (poseer `--gui`); `--cli` fuerza modo consola. En modo fuente el comportamiento no cambia (`--gui` explícito sigue siendo necesario).
+- Scripts de build locales: `build/build_windows.ps1` (icono → version info → PyInstaller → Inno Setup) y `build/build_unix.sh` (PyInstaller → AppDir → appimagetool). Inno Setup 6 (ISCC.exe) se auto-detecta en rutas estándar y winget.
+- Validado en Windows 11 (Python 3.14 en venv): arranque GUI completo con i18n, packs, sprites, overlay, tray y ChromaDB inicializada (bbdd en `%LOCALAPPDATA%\TomoDesk\chroma_db`); degradado correcto sin Ollama. `dist\TomoDesk-Setup-1.0.0.exe` (~209 MB, LZMA2).
+- `requirements-build.txt` (build, no runtime): `pyinstaller==6.22.2`.
+
+Artefactos por build:
+| Plataforma | Artefacto local |
+|---|---|
+| Windows | `dist\TomoDesk\` (one-folder) + `dist\TomoDesk-Setup-<version>.exe` |
+| Linux | `dist\TomoDesk\` (one-folder) + `dist\TomoDesk-<version>-x86_64.AppImage` |
+
+### Fase 3 — Provider llama.cpp + modelo descargable ✅ (2026-09-02)
+
+Hecho:
+- Nuevo provider `llama_cpp` en `create_provider` (`src/llm/llm.py`) con import perezoso de `llama-cpp-python` (wheel CPU) en `src/llm/llama_cpp.py`. Dependencia **opcional**: no está en `requirements.txt`; si falta, degrada con `LLMError`/"no instalado".
+- Descarga de GGUF Q4_K_M desde HuggingFace a `data/models/` vía `src/llm/download.py` (stdlib `urllib`, sin nuevas deps, `.part` + rename).
+- Descarga **manual** (decisión): comando `/model download|status|uninstall` en CLI y botón "Descargar modelo" con barra de progreso en Ajustes → LLM (QThread). No es automática.
+- Config bajo `llm.llama_cpp` (`model_path`, `n_ctx`, `model_repo`, `model_file`).
+- Licencia: el Llama 3.2 GGUF usa la Licencia de Comunidad Llama (no MIT); documentado en README y en el diálogo "Acerca de".
+- Un único binario; el `.gguf` es un dato opcional (asset "full" lo coloca en `data/models/`); `llama-cpp-python` solo viaja en builds que lo instalen.
 
 ### Fase 4 — Job de release en CI
 - Extender `.github/workflows/ci.yml` con job disparado por tag: build matrix `[windows-latest, ubuntu-22.04]` → upload a GitHub Releases.
