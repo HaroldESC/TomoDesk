@@ -80,9 +80,14 @@ Hecho:
 - Licencia: el Llama 3.2 GGUF usa la Licencia de Comunidad Llama (no MIT); documentado en README y en el diálogo "Acerca de".
 - Un único binario; el `.gguf` es un dato opcional (asset "full" lo coloca en `data/models/`); `llama-cpp-python` solo viaja en builds que lo instalen.
 
-### Fase 4 — Job de release en CI
-- Extender `.github/workflows/ci.yml` con job disparado por tag: build matrix `[windows-latest, ubuntu-22.04]` → upload a GitHub Releases.
-- Posteriores (opcionales): COPR, Flathub.
+### Fase 4 — Job de release en CI ✅ (2026-09-03)
+
+Hecho:
+- Extendido `.github/workflows/ci.yml` con trigger por tags (`v*`) y dos jobs nuevos:
+  - `release` (matrix `[windows-latest, ubuntu-22.04]`), dependiente de `test`, ejecuta `build_windows.ps1` / `build_unix.sh` y sube instalador `.exe` (Inno Setup) y `.AppImage`.
+  - `publish`, dependiente de `release`, crea la GitHub Release con `softprops/action-gh-release@v2` y release notes auto-generadas.
+
+Posteriores (opcionales): COPR, Flathub.
 
 ## Gotchas conocidas
 
