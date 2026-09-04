@@ -70,6 +70,16 @@ jobs:
           python-version: "3.12"
           cache: pip
 
+      - name: Check release tag matches src version
+        shell: bash
+        run: |
+          CURRENT=$(python build/bump_version.py --print)
+          echo "Release tag: ${GITHUB_REF_NAME} | src/__init__.py: v${CURRENT}"
+          if [ "${GITHUB_REF_NAME}" != "v${CURRENT}" ]; then
+            echo "::error::Release tag ${GITHUB_REF_NAME} does not match v${CURRENT} in src/__init__.py"
+            exit 1
+          fi
+
       - name: Install Qt system dependencies (Linux)
         if: runner.os == 'Linux'
         run: |

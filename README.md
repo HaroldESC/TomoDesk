@@ -2,10 +2,10 @@
 
 > Desktop companion that merges an interactive character with an AI-powered productivity agent. Local-first, private, and customizable.
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![Version](https://img.shields.io/badge/version-1.1.0-blue)
 ![Python](https://img.shields.io/badge/python-3.12%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Status](https://img.shields.io/badge/status-v1.0.0--release-yellow)
+![Status](https://img.shields.io/badge/status-v1.1.0--release-yellow)
 ![CI](https://github.com/HaroldESC/TomoDesk/actions/workflows/ci.yml/badge.svg)
 
 ## Table of Contents

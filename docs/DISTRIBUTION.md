@@ -89,6 +89,26 @@ Hecho:
 
 Posteriores (opcionales): COPR, Flathub.
 
+### Fase 5 — Gestión de versiones (2026-09-04)
+
+La versión **SemVer** se centraliza en `src/__init__.py` (`__version__`). Todo lo demás deriva de ahí en tiempo de build: `build/version_info.txt` (lo regenera `build/make_version_info.py`), `build/tomodesk.iss` (AppVersion vía `/DAppVersion` en `build_windows.ps1`) y la GitHub Release (creada del tag `v*`).
+
+Flujo de release:
+
+```bash
+python build/bump_version.py 1.1.0     # actualiza src/__init__.py, badges del README y version_info.txt
+git commit -am "chore: Bump version to 1.1.0"
+git tag -a v1.1.0
+git push origin main && git push origin v1.1.0   # el tag dispara el CI release
+```
+
+- `build/bump_version.py 1.1.0`: bump en `src/__init__.py` + badges `version`/`status` del README + regenera `build/version_info.txt`. Rechaza versiones que no sean `MAJOR.MINOR.PATCH`.
+- `build/bump_version.py --print`: imprime la versión actual; lo usa el guard de CI.
+- **Guard de CI**: el job `release` falla si el tag (`v*`) no coincide con `v{__version__}`, evitando releases con versiones desincronizadas.
+- **Criterio SemVer**: `patch` (1.0.1) solo bugs retrocompatibles; `minor` (1.1.0) funcionalidad nueva; `major` cambios incompatibles.
+- Duplicados manuales a revisar en cada bump: `ROADMAP.md` (sección Released) y `docs/progress.md`.
+- Los `"1.0.0"` de los manifiestos (context_pack/sprite/personality) y `min_tomodesk_version` son versiones de *esquema de packs*, no de la app: no se tocan al versionar la app.
+
 ## Gotchas conocidas
 
 - **Wayland vs pygetwindow**: overlay / window-sitting dependen de X11; documentar "sesión X11 para máxima compatibilidad" hasta implementar soporte nativo (p.ej. KWin scripting).
