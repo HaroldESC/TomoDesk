@@ -2,7 +2,7 @@ import logging
 import os
 import tempfile
 
-from PySide6.QtCore import QCoreApplication, QTimer, Qt
+from PySide6.QtCore import QCoreApplication, QRect, QTimer, Qt, Signal
 from PySide6.QtGui import QAction, QColor, QFont, QIcon, QImage, QPainter, QPixmap
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
@@ -10,6 +10,8 @@ logger = logging.getLogger(__name__)
 
 
 class TrayIcon(QSystemTrayIcon):
+    restart_requested = Signal()
+
     def __init__(self, main_window, config, overlay=None, i18n=None, menu_style=None, parent=None):
         super().__init__(parent)
         self.main_window = main_window
@@ -44,9 +46,12 @@ class TrayIcon(QSystemTrayIcon):
         painter.setPen(Qt.NoPen)
         painter.drawRoundedRect(margin, margin, r, r, r // 4, r // 4)
         painter.setPen(QColor("#FFFFFF"))
-        fs = size * 9 // 16
-        painter.setFont(QFont("Segoe UI", fs, QFont.Bold))
-        painter.drawText(pix.rect(), Qt.AlignCenter, "T")
+        inner = r
+        font = QFont("Segoe UI", QFont.Bold)
+        font.setPixelSize(max(8, round(inner * 0.6)))
+        painter.setFont(font)
+        content = QRect(margin, margin, inner, inner)
+        painter.drawText(content, Qt.AlignCenter, "T")
         painter.end()
         return pix
 
@@ -109,6 +114,10 @@ class TrayIcon(QSystemTrayIcon):
         self.focus_action.setCheckable(True)
         self.focus_action.triggered.connect(self._toggle_focus)
         menu.addAction(self.focus_action)
+
+        restart_action = QAction(t("menu.restart"), self)
+        restart_action.triggered.connect(self.restart_requested.emit)
+        menu.addAction(restart_action)
 
         menu.addSeparator()
 

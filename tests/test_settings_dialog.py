@@ -165,3 +165,43 @@ class TestContextPacks:
     def test_creates_own_manager_when_none(self, qtbot, mock_config, mock_i18n):
         dialog = _make_dialog(qtbot, mock_config, mock_i18n)
         assert isinstance(dialog.context_manager, ContextPackManager)
+
+
+class TestModelDownload:
+    def test_worker_is_persisted_on_dialog_and_reenables_button(
+        self, qtbot, mock_config, mock_i18n, tmp_path
+    ):
+        from src.gui.windows import settings_dialog as sd
+
+        dest = Path(str(tmp_path)) / "models" / "test.gguf"
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+
+        with patch("src.llm.download.model_path_from_config", return_value=dest), \
+             patch.object(sd._ModelDownloadWorker, "start") as start_mock:
+            dialog._on_download_model()
+
+            worker = dialog._download_worker
+            assert worker is not None
+            assert worker.parent() is dialog
+            assert not dialog.llama_download_btn.isEnabled()
+            start_mock.assert_called_once()
+
+            worker.finished.emit()
+
+        assert dialog.llama_download_btn.isEnabled()
+
+    def test_language_set_flag_persists_explicit_choice(
+        self, qtbot, mock_config, mock_i18n
+    ):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+
+        dialog.ui_lang.setCurrentText("es")
+        dialog._save_appearance()
+        assert "ui" in mock_config
+        assert mock_config["ui"]["language"] == "es"
+        assert mock_config["ui"]["language_set"] is True
+
+        dialog.ui_lang.setCurrentText("auto")
+        dialog._save_appearance()
+        assert mock_config["ui"]["language"] == "auto"
+        assert mock_config["ui"]["language_set"] is False

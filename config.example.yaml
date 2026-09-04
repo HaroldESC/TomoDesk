@@ -57,7 +57,8 @@ ui:
   hints:
     delay_ms: 2000
     enabled: true
-  language: en
+  language: auto
+  language_set: false # true si el usuario eligió idioma explícitamente; auto-detecta en primer arranque
   overlay_default_position: bottom-right
   overlay_enabled: true
   overlay_opacity: 1.0

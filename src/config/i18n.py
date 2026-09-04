@@ -1,6 +1,7 @@
 import json
 import locale
 import logging
+import re
 from pathlib import Path
 from typing import Dict, Any, Optional
 
@@ -37,18 +38,70 @@ class I18nManager:
             logger.warning(f"Configured language '{lang}' not available. Falling back to {self.default_lang}")
             return self.default_lang
 
-        try:
-            system_locale = locale.getdefaultlocale()[0]
-            if system_locale:
-                lang_code = system_locale.split('_')[0]
-                if lang_code in self.translations:
-                    logger.info(f"Auto-detected language: {lang_code}")
-                    return lang_code
-        except Exception as e:
-            logger.warning(f"Locale detection failed: {e}")
+        lang = self._detect_windows_lang()
+        if lang:
+            logger.info(f"Auto-detected language (Windows UI): {lang}")
+            return lang
+
+        lang = self._detect_posix_lang()
+        if lang:
+            logger.info(f"Auto-detected language (system): {lang}")
+            return lang
 
         logger.info(f"Using default language: {self.default_lang}")
         return self.default_lang
+
+    def _normalize_lang(self, code: Optional[str]) -> Optional[str]:
+        """Normalize a locale string to a supported language code.
+
+        Splits on '_', '-' or '.', lowercases the language part and returns it
+        only if it is available in self.translations.
+        """
+        if not code:
+            return None
+        lang_part = re.split(r"[_\-.]", code)[0].strip().lower()
+        if lang_part in self.translations:
+            return lang_part
+        return None
+
+    def _detect_windows_lang(self) -> Optional[str]:
+        """Detect the Windows UI language via the Win32 API.
+
+        Uses GetUserDefaultLocaleName; returns a normalized supported language
+        code or None when the API is unavailable (e.g. on POSIX).
+        """
+        try:
+            import ctypes
+            from ctypes import wintypes
+        except (ImportError, OSError) as e:
+            logger.warning(f"Windows UI language detection unavailable: {e}")
+            return None
+
+        try:
+            func = ctypes.windll.kernel32.GetUserDefaultLocaleName
+            func.argtypes = [wintypes.LPWSTR, ctypes.c_int]
+            func.restype = ctypes.c_int
+            buf = ctypes.create_unicode_buffer(85)  # LOCALE_NAME_MAX_LENGTH
+            written = func(buf, len(buf))
+            if written == 0:
+                return None
+            return self._normalize_lang(buf.value)
+        except (AttributeError, OSError) as e:
+            logger.warning(f"Windows UI language detection failed: {e}")
+            return None
+
+    def _detect_posix_lang(self) -> Optional[str]:
+        """Detect the current system locale via locale.setlocale/getlocale."""
+        try:
+            locale.setlocale(locale.LC_CTYPE)
+            system_locale = locale.getlocale(locale.LC_CTYPE)
+        except Exception as e:
+            logger.warning(f"Locale detection failed: {e}")
+            return None
+
+        if not system_locale or not system_locale[0]:
+            return None
+        return self._normalize_lang(system_locale[0])
 
     def set_language(self, lang: str) -> None:
         if lang not in self.translations:

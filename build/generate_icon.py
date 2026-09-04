@@ -29,7 +29,7 @@ _ASSETS = _ROOT / "assets"
 def _render_png(size: int) -> bytes:
     import tempfile
 
-    from PySide6.QtCore import Qt
+    from PySide6.QtCore import QRect, Qt
     from PySide6.QtGui import QColor, QFont, QPainter, QPixmap
 
     pix = QPixmap(size, size)
@@ -42,9 +42,12 @@ def _render_png(size: int) -> bytes:
     painter.setPen(Qt.NoPen)
     painter.drawRoundedRect(margin, margin, r, r, r // 4, r // 4)
     painter.setPen(QColor(WHITE))
-    fs = size * 9 // 16
-    painter.setFont(QFont("Segoe UI", fs, QFont.Bold))
-    painter.drawText(pix.rect(), Qt.AlignCenter, "T")
+    inner = r
+    font = QFont("Segoe UI", QFont.Bold)
+    font.setPixelSize(max(8, round(inner * 0.6)))
+    painter.setFont(font)
+    content = QRect(margin, margin, inner, inner)
+    painter.drawText(content, Qt.AlignCenter, "T")
     painter.end()
 
     with tempfile.TemporaryDirectory() as tmp:

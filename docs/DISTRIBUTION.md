@@ -94,4 +94,6 @@ Posteriores (opcionales): COPR, Flathub.
 - **Wayland vs pygetwindow**: overlay / window-sitting dependen de X11; documentar "sesión X11 para máxima compatibilidad" hasta implementar soporte nativo (p.ej. KWin scripting).
 - **keyring en Linux**: requiere Secret Service (KWallet/gnome-keyring); el fallback a `.env` ya existe.
 - **AppImage + libfuse2**: en Fedora instalar `libfuse2`.
-- **Restart/exit**: `sys.executable` en `main.py` y `os._exit` son compatibles con binarios congelados.
+- **Restart/exit**: el relanzamiento usa `_restart_command()`/`_restart_process()` en `main.py` — en modo empaquetado se lanza `[sys.executable] + sys.argv[1:]` (evita duplicar la ruta del exe, que rompería `argparse`); con `CREATE_NO_WINDOW | DETACHED_PROCESS` en Windows. `os._exit` sigue tras el Popen.
+- **Notificaciones de la bandeja**: se eliminó `SetCurrentProcessExplicitAppUserModelID` del arranque; Windows atribuye el nombre del exe ("TomoDesk") a las notificaciones en lugar del AUMID crudo.
+- **Sin consolas fantasma**: `icacls` en `src/config/secure_files.py` se lanza con `creationflags=CREATE_NO_WINDOW` (de lo contrario Windows muestra una consola negra por cada ACL en el arranque).

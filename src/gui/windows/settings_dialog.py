@@ -644,7 +644,9 @@ class SettingsDialog(QDialog):
         progress.setMinimumDuration(0)
         progress.setValue(0)
 
-        worker = _ModelDownloadWorker(self.config)
+        worker = _ModelDownloadWorker(self.config, parent=self)
+        self._download_worker = worker
+        self.llama_download_btn.setEnabled(False)
 
         def _on_progress(done, total):
             if total and total > 0:
@@ -682,8 +684,24 @@ class SettingsDialog(QDialog):
         worker.done.connect(_on_done)
         worker.error.connect(_on_error)
         progress.canceled.connect(worker.request_cancel)
+        worker.finished.connect(lambda: self.llama_download_btn.setEnabled(True))
+        worker.finished.connect(worker.deleteLater)
         progress.show()
         worker.start()
+
+    def _abort_download(self):
+        worker = getattr(self, "_download_worker", None)
+        if worker is not None and worker.isRunning():
+            worker.request_cancel()
+            worker.wait(3000)
+
+    def closeEvent(self, event):
+        self._abort_download()
+        super().closeEvent(event)
+
+    def reject(self):
+        self._abort_download()
+        super().reject()
 
     def _build_memory_general(self, layout):
         mem = self.config.get("memory", {})
@@ -1298,6 +1316,7 @@ class SettingsDialog(QDialog):
         new_lang = self.ui_lang.currentText()
         old_lang = self.i18n.get_current_language()
         ui["language"] = new_lang
+        ui["language_set"] = new_lang != "auto"
         resolved = self.i18n.detect_language(new_lang)
         if resolved != old_lang:
             self.i18n.set_language(resolved)

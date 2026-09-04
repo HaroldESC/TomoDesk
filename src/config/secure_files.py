@@ -39,8 +39,10 @@ def _secure_file_windows(path: Path) -> None:
     if not user:
         logger.warning("Could not determine current user; skipping ACL for %s", path)
         return
+    kwargs = {"creationflags": subprocess.CREATE_NO_WINDOW} if sys.platform == "win32" else {}
     subprocess.run(
         ["icacls", str(path), "/inheritance:r", "/grant:r", f"{user}:F"],
         check=True,
         capture_output=True,
+        **kwargs,
     )

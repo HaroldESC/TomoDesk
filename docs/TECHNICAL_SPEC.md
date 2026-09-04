@@ -912,9 +912,12 @@ class I18nManager:
         # Switch active language
 
     def detect_language(self, config_lang: str) -> str:
-        # If "auto", use system locale
-        # Map system locale to supported languages (en, es)
-        # Fallback to "en"
+        # If "auto" (or no explicit user choice, see ui.language_set):
+        #   1. Windows UI language via GetUserDefaultLocaleName (win32)
+        #   2. Current system locale via locale.setlocale/getlocale
+        #   3. Fallback to "en"
+        # Normalize variants (es-ES/es_ES -> es) and map to supported (en, es)
+        # Preserve config_lang as-is when != "auto" and supported; else "en"
 
     def t(self, key: str, **kwargs) -> str:
         # Dot-notation key lookup (e.g., "menu.file")

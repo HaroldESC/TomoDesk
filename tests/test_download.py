@@ -57,6 +57,30 @@ def test_download_file_uses_part_then_renames(tmp_path, mocker):
     assert dest.read_bytes() == data
 
 
+def test_download_file_urlopen_uses_timeout_default(tmp_path, mocker):
+    data = b"x" * 10
+    resp = _FakeResp([data], len(data))
+    mocker.patch.object(download.urllib.request, "urlopen", return_value=resp)
+
+    dest = tmp_path / "model.gguf"
+    download.download_file("https://example.com/model.gguf", dest)
+
+    _, kwargs = download.urllib.request.urlopen.call_args
+    assert kwargs["timeout"] == 30
+
+
+def test_download_file_urlopen_propagates_explicit_timeout(tmp_path, mocker):
+    data = b"x" * 10
+    resp = _FakeResp([data], len(data))
+    mocker.patch.object(download.urllib.request, "urlopen", return_value=resp)
+
+    dest = tmp_path / "model.gguf"
+    download.download_file("https://example.com/model.gguf", dest, timeout=5)
+
+    _, kwargs = download.urllib.request.urlopen.call_args
+    assert kwargs["timeout"] == 5
+
+
 def test_model_exists(tmp_path):
     model = tmp_path / "model.gguf"
     config = {"llm": {"llama_cpp": {"model_path": str(model)}}}

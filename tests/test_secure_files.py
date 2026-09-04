@@ -1,3 +1,4 @@
+import subprocess
 import sys
 
 import pytest
@@ -29,6 +30,8 @@ def test_secure_file_uses_icacls_windows(mocker, tmp_path):
     run.assert_called_once()
     args = run.call_args[0][0]
     assert args == ["icacls", str(target), "/inheritance:r", "/grant:r", "TestUser:F"]
+    kwargs = run.call_args[1]
+    assert kwargs.get("creationflags") == subprocess.CREATE_NO_WINDOW
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only behavior")

@@ -1,5 +1,6 @@
 import atexit
 import os
+import subprocess
 import sys
 import threading
 import logging
@@ -18,7 +19,12 @@ logger = logging.getLogger(__name__)
 def _init_i18n(config):
     from src.config.i18n import I18nManager
     i = I18nManager(str(paths.resolve(config, "paths", "locales")), default_lang="en")
-    lang = i.detect_language(config.get("ui", {}).get("language", "auto"))
+    ui = config.get("ui", {})
+    configured = ui.get("language", "auto")
+    if ui.get("language_set"):
+        lang = i.detect_language(configured)
+    else:
+        lang = i.detect_language("auto")
     i.set_language(lang)
     return i
 
@@ -269,11 +275,6 @@ def run_gui(config):
     icon_path = paths.resource_dir() / "tomodesk.png"
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))
-    try:
-        import ctypes
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("tomodesk.tomo.1.0")
-    except (ImportError, AttributeError, OSError):
-        pass
 
     splash = _show_splash()
 
@@ -366,6 +367,7 @@ def run_gui(config):
         theme = config.get("ui", {}).get("theme", "light")
         window._tray_icon = TrayIcon(window, config, overlay=overlay, i18n=i18n,
                                       menu_style=get_style_set(theme)["overlay_menu"])
+        window._tray_icon.restart_requested.connect(restart_app)
 
         def show_main_window():
             window.setWindowState(window.windowState() & ~Qt.WindowMinimized)
@@ -440,9 +442,7 @@ def run_gui(config):
     ret = app.exec()
     worker.wait(1000)
     if _restart_pending:
-        import subprocess
-        flags = subprocess.DETACHED_PROCESS if sys.platform == "win32" else 0
-        subprocess.Popen([sys.executable] + sys.argv, creationflags=flags)
+        _restart_process()
     if deps_ref["deps"] is not None:
         _graceful_shutdown(deps_ref["deps"])
     _close_db()
@@ -526,6 +526,32 @@ def _close_db():
             _db_manager.close()
         except Exception:
             pass
+
+
+def _restart_command():
+    """Devuelve (argv, creationflags) para relanzar la app tras un reinicio.
+
+    En modo empaquetado ``sys.argv[0] == sys.executable``, asi que se omiten los
+    argumentos de programa para no duplicar la ruta del exe (rompe argparse).
+    """
+    process_args = [
+        sys.executable,
+        *(sys.argv[1:] if paths.is_frozen() else sys.argv),
+    ]
+    flags = 0
+    if sys.platform == "win32":
+        flags |= subprocess.CREATE_NO_WINDOW
+        flags |= getattr(subprocess, "DETACHED_PROCESS", 0)
+    return process_args, flags
+
+
+def _restart_process() -> None:
+    """Lanza una nueva instancia en un proceso separado, fallando sin crashear."""
+    try:
+        args, flags = _restart_command()
+        subprocess.Popen(args, creationflags=flags)
+    except Exception:
+        logger.exception("Failed to launch restart process")
 
 
 def main():

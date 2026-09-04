@@ -67,15 +67,19 @@ def download_file(
     dest: Path,
     progress: Callable[[int, int], None] | None = None,
     chunk_size: int = 1024 * 1024,
+    *,
+    timeout: int = 30,
 ) -> Path:
     """Descarga ``url`` a ``dest`` con callback de progreso (bytes, total).
 
     Total es -1 si el servidor no reporta Content-Length.
+    ``timeout`` es el timeout de conexion/lectura a nivel de socket en
+    segundos de cada operacion de ``urlopen``.
     """
     dest.parent.mkdir(parents=True, exist_ok=True)
     part = dest.with_suffix(dest.suffix + ".part")
     req = urllib.request.Request(url, headers={"User-Agent": "TomoDesk/1.0"})
-    with urllib.request.urlopen(req) as resp, open(part, "wb") as f:
+    with urllib.request.urlopen(req, timeout=timeout) as resp, open(part, "wb") as f:
         total = int(resp.headers.get("Content-Length") or -1)
         downloaded = 0
         while True:

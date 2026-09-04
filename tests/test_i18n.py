@@ -42,13 +42,57 @@ def test_load_translations(locale_dir):
 
 def test_detect_language_auto(locale_dir, monkeypatch):
     i18n = I18nManager(str(locale_dir))
-    monkeypatch.setattr("locale.getdefaultlocale", lambda: ("es_ES", "UTF-8"))
+    monkeypatch.setattr(i18n, "_detect_windows_lang", lambda: None)
+    monkeypatch.setattr("locale.getlocale", lambda *_: ("es_ES", "UTF-8"))
     lang = i18n.detect_language("auto")
     assert lang == "es"
 
-    monkeypatch.setattr("locale.getdefaultlocale", lambda: (None, None))
+    monkeypatch.setattr("locale.getlocale", lambda *_: (None, None))
     lang = i18n.detect_language("auto")
     assert lang == "en"
+
+
+def test_detect_language_auto_windows_ui(locale_dir, monkeypatch):
+    """Simulate Windows returning es-ES via GetUserDefaultLocaleName."""
+    import sys
+    import types
+
+    i18n = I18nManager(str(locale_dir))
+
+    class FakeBuffer:
+        def __init__(self, size):
+            self.value = ""
+
+        def __len__(self):
+            return 85
+
+    class FakeKernel32:
+        @staticmethod
+        def GetUserDefaultLocaleName(buf, size):
+            buf.value = "es-ES"
+            return 6
+
+    class FakeWindll:
+        kernel32 = FakeKernel32()
+
+    fake_ctypes = types.ModuleType("ctypes")
+    fake_ctypes.windll = FakeWindll()
+    fake_ctypes.create_unicode_buffer = FakeBuffer
+    fake_ctypes.c_int = int
+    fake_ctypes.wintypes = types.SimpleNamespace(LPWSTR=object)
+    monkeypatch.setitem(sys.modules, "ctypes", fake_ctypes)
+
+    assert i18n.detect_language("auto") == "es"
+
+
+def test_normalize_lang_variants(locale_dir):
+    i18n = I18nManager(str(locale_dir))
+    assert i18n._normalize_lang("en_US") == "en"
+    assert i18n._normalize_lang("es-ES") == "es"
+    assert i18n._normalize_lang("es_ES.UTF-8") == "es"
+    assert i18n._normalize_lang("pt-BR") is None
+    assert i18n._normalize_lang(None) is None
+    assert i18n._normalize_lang("") is None
 
 
 def test_detect_language_explicit(locale_dir):
