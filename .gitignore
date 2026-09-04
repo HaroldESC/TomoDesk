@@ -19,7 +19,7 @@ chroma_db/
 .benchmarks/
 
 # Dev changelog (personal reference)
-docs/progress.md
+docs/*
 
 # Logs
 data/*.log
