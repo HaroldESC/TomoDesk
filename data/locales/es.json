@@ -282,6 +282,7 @@
       "cancel": "Cancelar",
       "model_already_downloaded": "El modelo ya está descargado.",
       "model_downloaded": "Modelo descargado en {path}.",
+      "model_downloaded_provider": "El proveedor cambiará a llama.cpp local.",
       "model_download_error": "Error en la descarga: {error}",
       "llama_license_note": "El modelo descargado (Meta Llama 3.2) se distribuye bajo la Licencia de Comunidad Llama, no MIT. Ver README para más detalles.",
       "advanced_sitting": "Seguimiento de Ventana",

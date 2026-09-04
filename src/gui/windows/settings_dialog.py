@@ -84,6 +84,12 @@ class _DownloadCancelled(Exception):
     """Señal interna para abortar una descarga en curso."""
 
 
+def _soft_wrap_path(text: str) -> str:
+    """Inserta espacios de ancho cero tras '/' y '\\\\' para que el QLabel
+    pueda envolver rutas largas sin romper la ventana al borde de la pantalla."""
+    return text.replace("\\", "\\\u200b").replace("/", "/\u200b")
+
+
 class SettingsDialog(QDialog):
     sprite_changed = Signal(str)
     language_changed = Signal()
@@ -663,11 +669,20 @@ class SettingsDialog(QDialog):
             progress.setValue(100)
             progress.close()
             self.llama_path.setText(str(dest))
-            QMessageBox.information(
-                self,
-                self.i18n.t("dialogs.settings.title"),
-                self.i18n.t("dialogs.settings.model_downloaded", path=dest),
+            self.llm_provider.setCurrentText("llama_cpp")
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Information)
+            box.setWindowTitle(self.i18n.t("dialogs.settings.title"))
+            box.setText(
+                _soft_wrap_path(
+                    self.i18n.t("dialogs.settings.model_downloaded", path=str(dest))
+                )
             )
+            box.setInformativeText(
+                self.i18n.t("dialogs.settings.model_downloaded_provider")
+            )
+            box.setWordWrap(True)
+            box.exec()
 
         def _on_error(error):
             if error == "cancelled":
@@ -691,7 +706,13 @@ class SettingsDialog(QDialog):
 
     def _abort_download(self):
         worker = getattr(self, "_download_worker", None)
-        if worker is not None and worker.isRunning():
+        if worker is None:
+            return
+        try:
+            running = worker.isRunning()
+        except RuntimeError:
+            return
+        if running:
             worker.request_cancel()
             worker.wait(3000)
 
@@ -1401,7 +1422,7 @@ class SettingsDialog(QDialog):
 
         llm.setdefault("llama_cpp", {})
         llm["llama_cpp"]["model_path"] = self.llama_path.text().strip() or \
-            "data/models/llama-3.2-1B-Instruct-Q4_K_M.gguf"
+            "data/models/Llama-3.2-1B-Instruct-Q4_K_M.gguf"
         llm["llama_cpp"]["n_ctx"] = self.llama_ctx.value()
 
         mem = self.config.setdefault("memory", {})

@@ -205,3 +205,51 @@ class TestModelDownload:
         dialog._save_appearance()
         assert mock_config["ui"]["language"] == "auto"
         assert mock_config["ui"]["language_set"] is False
+
+    def test_abort_download_safe_when_worker_deleted(
+        self, qtbot, mock_config, mock_i18n, tmp_path
+    ):
+        from src.gui.windows import settings_dialog as sd
+
+        dest = Path(str(tmp_path)) / "models" / "test.gguf"
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+
+        with patch("src.llm.download.model_path_from_config", return_value=dest), \
+             patch.object(sd._ModelDownloadWorker, "start"):
+            dialog._on_download_model()
+
+        worker = dialog._download_worker
+        worker.isRunning = MagicMock(
+            side_effect=RuntimeError("libshiboken: Internal C++ object deleted")
+        )
+        dialog._abort_download()  # must not raise
+
+    def test_done_message_uses_wordwrap_and_soft_breaks(
+        self, qtbot, mock_config, mock_i18n, tmp_path
+    ):
+        from src.gui.windows import settings_dialog as sd
+
+        dest = Path(str(tmp_path)) / "models" / "test.gguf"
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        mb_class = MagicMock()
+        mb_class.Information = 1
+
+        with patch("src.llm.download.model_path_from_config", return_value=dest), \
+             patch.object(sd._ModelDownloadWorker, "start"), \
+             patch("src.gui.windows.settings_dialog.QMessageBox", mb_class):
+            dialog._on_download_model()
+            worker = dialog._download_worker
+            worker.done.emit(dest)
+
+        instance = mb_class.return_value
+        assert instance.setWordWrap.called
+        assert instance.setWordWrap.call_args[0][0] is True
+        assert instance.setText.called
+        assert dialog.llm_provider.currentText() == "llama_cpp"
+        assert instance.setInformativeText.called
+
+    def test_soft_wrap_path_inserts_break_opportunities(self):
+        from src.gui.windows.settings_dialog import _soft_wrap_path
+
+        assert _soft_wrap_path("C:\\a\\b.gguf") == "C:\\\u200ba\\\u200bb.gguf"
+        assert _soft_wrap_path("h/x.gguf") == "h/\u200bx.gguf"
