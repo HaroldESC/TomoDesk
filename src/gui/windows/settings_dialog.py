@@ -681,7 +681,9 @@ class SettingsDialog(QDialog):
             box.setInformativeText(
                 self.i18n.t("dialogs.settings.model_downloaded_provider")
             )
-            box.setWordWrap(True)
+            label = box.findChild(QLabel)
+            if label is not None:
+                label.setWordWrap(True)
             box.exec()
 
         def _on_error(error):

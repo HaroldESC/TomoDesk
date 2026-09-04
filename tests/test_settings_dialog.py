@@ -242,8 +242,9 @@ class TestModelDownload:
             worker.done.emit(dest)
 
         instance = mb_class.return_value
-        assert instance.setWordWrap.called
-        assert instance.setWordWrap.call_args[0][0] is True
+        label = instance.findChild.return_value
+        assert label.setWordWrap.called
+        assert label.setWordWrap.call_args[0][0] is True
         assert instance.setText.called
         assert dialog.llm_provider.currentText() == "llama_cpp"
         assert instance.setInformativeText.called
