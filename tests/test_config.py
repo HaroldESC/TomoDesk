@@ -92,6 +92,49 @@ class TestLoadConfig:
         assert llm_cpp["model_repo"]
         assert llm_cpp["model_file"].endswith(".gguf")
 
+    def test_load_config_migrates_legacy_model_repo(self, tmp_path):
+        config = {
+            "llm": {
+                "model": "qwen",
+                "llama_cpp": {
+                    "model_repo": "ggml-org/llama-3.2-1B-Instruct-GGUF",
+                    "model_file": "llama-3.2-1B-Instruct-Q4_K_M.gguf",
+                    "model_path": "data/models/llama-3.2-1B-Instruct-Q4_K_M.gguf",
+                },
+            },
+            "memory": {},
+            "personality": {},
+            "modes": {},
+            "database": {},
+        }
+        path = tmp_path / "config.yaml"
+        path.write_text(yaml.safe_dump(config), encoding="utf-8")
+        loaded = load_config(path)
+        llm_cpp = loaded["llm"]["llama_cpp"]
+        assert llm_cpp["model_repo"] == "bartowski/Llama-3.2-1B-Instruct-GGUF"
+        assert llm_cpp["model_file"] == "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+        assert llm_cpp["model_path"].endswith(".gguf")
+        persisted = yaml.safe_load(path.read_text(encoding="utf-8"))
+        assert persisted["llm"]["llama_cpp"]["model_repo"] == (
+            "bartowski/Llama-3.2-1B-Instruct-GGUF"
+        )
+
+    def test_load_config_keeps_custom_model_repo(self, tmp_path):
+        config = {
+            "llm": {
+                "model": "qwen",
+                "llama_cpp": {"model_repo": "my/custom-repo"},
+            },
+            "memory": {},
+            "personality": {},
+            "modes": {},
+            "database": {},
+        }
+        path = tmp_path / "config.yaml"
+        path.write_text(yaml.safe_dump(config), encoding="utf-8")
+        loaded = load_config(path)
+        assert loaded["llm"]["llama_cpp"]["model_repo"] == "my/custom-repo"
+
     def test_load_config_missing_section_created(self, tmp_path):
         config = {"database": {}, "modes": {}, "personality": {}}
         path = tmp_path / "config.yaml"

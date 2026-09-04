@@ -8,21 +8,27 @@ descarga interrumpida no corrompe el destino.
 Nota de licencia: el modelo por defecto (Meta Llama 3.2) se distribuye bajo la
 Licencia de Comunidad Llama (https://llama.com/license/), distinta de la MIT del
 repositorio. Consulta su licencia antes de redistribuirlo.
+
+El repo por defecto es el espejo publico ``bartowski``: el repositorio de ggml-org
+se volvio *gated* en HuggingFace (responde HTTP 401 sin token) y los usuarios no
+registrados ya no pueden descargar de él.
 """
 
 import logging
 import urllib.request
 from pathlib import Path
 from typing import Callable
+from urllib.error import HTTPError
 
 from src.config import paths
 
 logger = logging.getLogger(__name__)
 
 # (repo, filename) del GGUF Q4_K_M de llama3.2:1b (~800MB). Se hostea en
-# HuggingFace y NO se sube a Git (licencia de Comunidad Llama).
-DEFAULT_MODEL_REPO = "ggml-org/llama-3.2-1B-Instruct-GGUF"
-DEFAULT_MODEL_FILE = "llama-3.2-1B-Instruct-Q4_K_M.gguf"
+# HuggingFace y NO se sube a Git (licencia de Comunidad Llama). Espejo publico:
+# el repo ggml-org es gated (HTTP 401) sin autenticacion.
+DEFAULT_MODEL_REPO = "bartowski/Llama-3.2-1B-Instruct-GGUF"
+DEFAULT_MODEL_FILE = "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
 
 # Perfil de un modelo valido para python-llama-cpp (placeholder doc).
 MODEL_PROFILE = "llama3.2-1B Instruct (Q4_K_M)"
@@ -62,6 +68,21 @@ def model_exists(config: dict) -> bool:
     return model_path_from_config(config).exists()
 
 
+def _raise_friendly_http_error(exc: HTTPError) -> None:
+    """Convierte un HTTPError de la descarga en un ValueError explicativo."""
+    if exc.code in (401, 403):
+        raise ValueError(
+            "HTTP %s: el repositorio del modelo requiere autenticacion o "
+            "aceptar su licencia (repos gated). Configura un model_repo "
+            "publico en Ajustes." % exc.code
+        ) from exc
+    if exc.code == 404:
+        raise ValueError(
+            "HTTP 404: no se encontro el archivo del modelo en el repositorio."
+        ) from exc
+    raise ValueError("HTTP %s: %s" % (exc.code, exc.reason)) from exc
+
+
 def download_file(
     url: str,
     dest: Path,
@@ -79,7 +100,11 @@ def download_file(
     dest.parent.mkdir(parents=True, exist_ok=True)
     part = dest.with_suffix(dest.suffix + ".part")
     req = urllib.request.Request(url, headers={"User-Agent": "TomoDesk/1.0"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp, open(part, "wb") as f:
+    try:
+        resp = urllib.request.urlopen(req, timeout=timeout)
+    except HTTPError as exc:
+        _raise_friendly_http_error(exc)
+    with resp, open(part, "wb") as f:
         total = int(resp.headers.get("Content-Length") or -1)
         downloaded = 0
         while True:

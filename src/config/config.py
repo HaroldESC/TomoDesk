@@ -36,10 +36,10 @@ _NESTED_DEFAULTS: dict[str, dict] = {
         "timeout": 60,
         "max_requests_per_minute": 60,
         "llama_cpp": {
-            "model_path": "data/models/llama-3.2-1B-Instruct-Q4_K_M.gguf",
+            "model_path": "data/models/Llama-3.2-1B-Instruct-Q4_K_M.gguf",
             "n_ctx": 4096,
-            "model_repo": "ggml-org/llama-3.2-1B-Instruct-GGUF",
-            "model_file": "llama-3.2-1B-Instruct-Q4_K_M.gguf",
+            "model_repo": "bartowski/Llama-3.2-1B-Instruct-GGUF",
+            "model_file": "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
         },
     },
     "personality": {
@@ -60,6 +60,32 @@ def _apply_nested_defaults(config: dict) -> None:
             config[section] = target
         for key, value in defaults.items():
             target.setdefault(key, value)
+
+
+_LEGACY_MODEL_REPO = "ggml-org/llama-3.2-1B-Instruct-GGUF"
+
+
+def _migrate_llama_cpp_default(config: dict) -> bool:
+    """Migra el repo ggml-org (gated en HuggingFace) al espejo publico.
+
+    Solo actua si el usuario heredo el valor por defecto antiguo; una config
+    personalizada (repo distinto) no se toca. Devuelve True si cambio algo.
+    """
+    llm = config.get("llm")
+    if not isinstance(llm, dict):
+        return False
+    llama_cpp = llm.get("llama_cpp")
+    if not isinstance(llama_cpp, dict) or not llama_cpp.get("model_repo"):
+        return False
+    if llama_cpp["model_repo"] != _LEGACY_MODEL_REPO:
+        return False
+    defaults = _NESTED_DEFAULTS["llm"]["llama_cpp"]
+    llama_cpp["model_repo"] = defaults["model_repo"]
+    llama_cpp["model_file"] = defaults["model_file"]
+    llama_cpp["model_path"] = defaults["model_path"]
+    logger.info("Migrado model_repo legacy (%s) al espejo %s",
+                _LEGACY_MODEL_REPO, defaults["model_repo"])
+    return True
 
 
 def _strip_sensitive(config: dict) -> dict:
@@ -132,6 +158,9 @@ def load_config(config_path: Path | None = None) -> dict:
 
     _apply_nested_defaults(config)
     _CONFIG_PATH = config_path.resolve()
+
+    if _migrate_llama_cpp_default(config):
+        save_config(config, _CONFIG_PATH)
 
     creds = CredentialManager()
     migrated = creds.migrate_from_config(config)

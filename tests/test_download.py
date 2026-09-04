@@ -5,6 +5,37 @@ import pytest
 from src.llm import download
 
 
+def test_default_model_repo_is_public_mirror():
+    assert download.DEFAULT_MODEL_REPO == "bartowski/Llama-3.2-1B-Instruct-GGUF"
+    assert download.DEFAULT_MODEL_FILE == "Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+
+
+def test_default_url_uses_public_mirror():
+    url = download.model_url_from_config({})
+    assert url == (
+        "https://huggingface.co/bartowski/Llama-3.2-1B-Instruct-GGUF/"
+        "resolve/main/Llama-3.2-1B-Instruct-Q4_K_M.gguf"
+    )
+
+
+def test_download_file_gated_repo_raises_friendly_error(tmp_path, mocker):
+    from urllib.error import HTTPError
+
+    err = HTTPError("https://example.com/m.gguf", 401, "Unauthorized", None, None)
+    mocker.patch.object(download.urllib.request, "urlopen", side_effect=err)
+    with pytest.raises(ValueError, match="autenticacion"):
+        download.download_file("https://example.com/m.gguf", tmp_path / "m.gguf")
+
+
+def test_download_file_not_found_raises_friendly_error(tmp_path, mocker):
+    from urllib.error import HTTPError
+
+    err = HTTPError("https://example.com/m.gguf", 404, "Not Found", None, None)
+    mocker.patch.object(download.urllib.request, "urlopen", side_effect=err)
+    with pytest.raises(ValueError, match="404"):
+        download.download_file("https://example.com/m.gguf", tmp_path / "m.gguf")
+
+
 class _FakeResp:
     def __init__(self, chunks, total):
         self.headers = {"Content-Length": str(total)}

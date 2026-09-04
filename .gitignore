@@ -70,3 +70,6 @@ build/_inspect_pyz.py
 htmlcov/
 .coverage
 coverage/
+
+# Downloaded GGUF models (user-downloaded, Llama Community License)
+data/models/*
