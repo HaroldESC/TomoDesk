@@ -3,7 +3,6 @@ import logging
 from typing import Dict, Optional, Tuple
 
 from src.config.config import save_config
-from src.config.logging_config import set_console_debug
 from src.llm import download
 from src.memory.memory import MemoryManager
 
@@ -554,11 +553,6 @@ def cmd_debug(args, memory_manager, config, **kwargs) -> Tuple[Optional[str], bo
         save_config(config)
     except Exception:
         logger.exception("No se pudo guardar el config con debug_prompts")
-
-    try:
-        set_console_debug(enable)
-    except Exception:
-        logger.exception("No se pudo ajustar el nivel de consola")
 
     if enable:
         return (i18n.t("commands.debug_on"), True)

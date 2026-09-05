@@ -98,7 +98,7 @@ class PromptBuilder:
             block.append(f"--- {message.get('role', '?')} ---")
             block.append(str(message.get("content", "")))
         block.append("=== END PROMPT ===")
-        logger.debug("\n" + "\n".join(block))
+        logger.info("\n" + "\n".join(block))
 
     def _build_system_prompt(self, emotional_state: Dict = None, state_manager=None) -> str:
         if self._i18n:

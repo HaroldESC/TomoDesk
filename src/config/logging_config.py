@@ -8,8 +8,6 @@ from src.config.paths import log_dir as default_log_dir
 
 _initialized = False
 
-_console_handler: logging.Handler | None = None
-
 
 _SENSITIVE_PATTERNS: list[tuple[str, str]] = [
     (r'(api_key["\']?\s*[:=]\s*)["\']?[^"\';\s,}\]]+', r'\1[REDACTED]'),
@@ -52,7 +50,7 @@ def _add_redaction_filter(root_logger: logging.Logger) -> None:
 
 
 def setup_logging(log_dir: Path | None = None) -> None:
-    global _initialized, _console_handler
+    global _initialized
     if _initialized:
         return
     _initialized = True
@@ -79,18 +77,9 @@ def setup_logging(log_dir: Path | None = None) -> None:
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(formatter)
-    _console_handler = console_handler
 
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.DEBUG)
     root_logger.addHandler(console_handler)
 
     _add_redaction_filter(root_logger)
-
-
-def set_console_debug(enabled: bool) -> None:
-    """Baja/sube la consola a nivel DEBUG para poder leer los prompts."""
-    if _console_handler is not None:
-        _console_handler.setLevel(
-            logging.DEBUG if enabled else logging.INFO
-        )

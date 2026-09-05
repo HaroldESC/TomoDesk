@@ -145,7 +145,7 @@
     "model_deleted": "Modelo eliminado: {path}",
     "model_not_present": "No se encontró ningún modelo local.",
     "debug_usage": "Uso: /debug [on|off]",
-    "debug_on": "Debug de prompts activado. El prompt exacto enviado al modelo se registra a nivel DEBUG (ver tomodesk.log). En modo CLI también aparece en la consola.",
+    "debug_on": "Debug de prompts activado. El prompt exacto enviado al modelo se muestra en pantalla y se registra en tomodesk.log.",
     "debug_off": "Debug de prompts desactivado.",
     "memory_preview": "Memoria guardada (importancia: {importance:.1f}): \"{preview}\"",
     "note_item": "#{id} - {title}",

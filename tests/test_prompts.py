@@ -84,7 +84,7 @@ def test_build_messages_debug_prompt_dumped_when_enabled(
     config["logs"] = {"debug_prompts": True}
     builder = PromptBuilder(config, mock_context_builder, mock_memory_manager)
 
-    with caplog.at_level(logging.DEBUG, logger="src.llm.prompts"):
+    with caplog.at_level(logging.INFO, logger="src.llm.prompts"):
         builder.build_messages("Hello", emotional_state={"happiness": 0.5})
 
     assert "=== PROMPT (chat) ===" in caplog.text
@@ -100,7 +100,7 @@ def test_build_proactive_prompt_debug_dumped_when_enabled(
     config["logs"] = {"debug_prompts": True}
     builder = PromptBuilder(config, mock_context_builder, mock_memory_manager)
 
-    with caplog.at_level(logging.DEBUG, logger="src.llm.prompts"):
+    with caplog.at_level(logging.INFO, logger="src.llm.prompts"):
         builder.build_proactive_prompt("User opened Spotify")
 
     assert "=== PROMPT (proactive) ===" in caplog.text
@@ -114,7 +114,7 @@ def test_build_messages_debug_prompt_off_by_default(
     config["logs"] = {"debug_prompts": False}
     builder = PromptBuilder(config, mock_context_builder, mock_memory_manager)
 
-    with caplog.at_level(logging.DEBUG, logger="src.llm.prompts"):
+    with caplog.at_level(logging.INFO, logger="src.llm.prompts"):
         builder.build_messages("Hello")
 
     assert "PROMPT" not in caplog.text

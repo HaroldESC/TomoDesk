@@ -3,7 +3,6 @@ from src.system.commands import cmd_debug
 
 def test_debug_on(mock_i18n, mocker):
     mocker.patch("src.system.commands.save_config")
-    mocker.patch("src.system.commands.set_console_debug")
     config = {}
 
     msg, continue_loop = cmd_debug("on", None, config, i18n=mock_i18n)
@@ -15,7 +14,6 @@ def test_debug_on(mock_i18n, mocker):
 
 def test_debug_off(mock_i18n, mocker):
     mocker.patch("src.system.commands.save_config")
-    mocker.patch("src.system.commands.set_console_debug")
     config = {"logs": {"debug_prompts": True}}
 
     msg, continue_loop = cmd_debug("off", None, config, i18n=mock_i18n)
@@ -27,7 +25,6 @@ def test_debug_off(mock_i18n, mocker):
 
 def test_debug_toggle_no_args(mock_i18n, mocker):
     mocker.patch("src.system.commands.save_config")
-    mocker.patch("src.system.commands.set_console_debug")
     config = {}
 
     _, continue_loop = cmd_debug("", None, config, i18n=mock_i18n)
@@ -50,14 +47,3 @@ def test_debug_saves_config(mock_i18n, mocker):
     cmd_debug("on", None, config, i18n=mock_i18n)
 
     save_config.assert_called_once_with(config)
-
-
-def test_debug_toggles_console_level(mock_i18n, mocker):
-    set_console_debug = mocker.patch("src.system.commands.set_console_debug")
-
-    cmd_debug("on", None, {}, i18n=mock_i18n)
-    set_console_debug.assert_called_once_with(True)
-
-    set_console_debug.reset_mock()
-    cmd_debug("off", None, {"logs": {"debug_prompts": True}}, i18n=mock_i18n)
-    set_console_debug.assert_called_once_with(False)
