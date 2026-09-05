@@ -175,7 +175,22 @@ def _validate_run_deps(deps: dict) -> None:
         raise KeyError(f"Unexpected dependencies: {extra}")
 
 
-def _check_ollama(engine, state_manager, memory_manager, proactive_engine, reminder_checker, event_monitor):
+def _provider_label(config) -> str:
+    """Etiqueta legible del proveedor para mensajes de error."""
+    provider = config.get("llm", {}).get("provider", "ollama")
+    if provider == "ollama":
+        return f"Ollama at {config['llm'].get('endpoint', 'http://localhost:11434')}"
+    if provider == "openai_compatible":
+        return f"OpenAI-compatible endpoint at {config['llm'].get('endpoint', '')}"
+    if provider == "llama_cpp":
+        return (
+            "llama.cpp (local model). Check that llama-cpp-python is installed "
+            "and the GGUF is downloaded (/model status)"
+        )
+    return provider
+
+
+def _check_provider(engine, state_manager, memory_manager, proactive_engine, reminder_checker, event_monitor):
     if engine.check_availability():
         return True
     state_manager.save_to_preferences(memory_manager)
@@ -461,10 +476,10 @@ def run_cli(config):
     proactive_engine = deps["proactive_engine"]
     i18n = deps["i18n"]
 
-    if not _check_ollama(engine, state_manager, memory_manager,
-                          proactive_engine, reminder_checker, event_monitor):
-        print(f"\n[ERROR] Cannot connect to Ollama at {config['llm']['endpoint']}")
-        print(f"[ERROR] Make sure Ollama is running and model '{config['llm']['model']}' is pulled.\n")
+    if not _check_provider(engine, state_manager, memory_manager,
+                           proactive_engine, reminder_checker, event_monitor):
+        print(f"\n[ERROR] Cannot connect to {_provider_label(config)}")
+        print("[ERROR] Make sure the LLM provider is running and the model is available.\n")
         sys.exit(1)
 
     def on_proactive_comment(comment: str, trigger_type: str):

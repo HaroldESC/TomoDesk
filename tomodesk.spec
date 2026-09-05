@@ -48,6 +48,18 @@ for pkg in ("tokenizers",):
     binaries += b
     hiddenimports += h
 
+# ── llama_cpp (opcional, provider local): import perezoso en
+# src/llm/llama_cpp.py (from llama_cpp import Llama), que modulegraph no ve.
+# Solo se bundlea si llama-cpp-python esta instalada en el entorno de build
+# (requirement requirements-llama.txt); los builds "estandar" no crecen.
+try:
+    d, b, h = collect_all("llama_cpp")
+except Exception:
+    d = b = h = []
+datas += d
+binaries += b
+hiddenimports += h + ["llama_cpp"]
+
 # ── chromadb migrations (*.sql): cargados en runtime con importlib_resources,
 # que modulegraph no ve. Se recogen todos los datos no Python del paquete.
 try:

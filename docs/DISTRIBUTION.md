@@ -79,6 +79,8 @@ Hecho:
 - Config bajo `llm.llama_cpp` (`model_path`, `n_ctx`, `model_repo`, `model_file`).
 - Licencia: el Llama 3.2 GGUF usa la Licencia de Comunidad Llama (no MIT); documentado en README y en el diálogo "Acerca de".
 - Un único binario; el `.gguf` es un dato opcional (asset "full" lo coloca en `data/models/`); `llama-cpp-python` solo viaja en builds que lo instalen.
+- Instalación de `llama-cpp-python`: PyPI solo publica el sdist (compila desde cero, requiere MSVC/nmake y falla sin toolchain). `requirements-llama.txt` añade el índice de wheels de abetlen (`--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu`), que sirve wheels `py3` precompiladas (Windows/Linux/macOS, compatibles con Python 3.14).
+- Para que el binario empaquetado incluya el provider local, el build debe ejecutarse con `llama-cpp-python` instalada en el entorno de build: `pip install -r requirements-llama.txt` antes de `build/build_windows.ps1` / `build/build_unix.sh`. `tomodesk.spec` la bundlea condicionalmente (`collect_all("llama_cpp")`) solo si está presente.
 
 ### Fase 4 — Job de release en CI ✅ (2026-09-03)
 
@@ -118,3 +120,6 @@ git push origin main && git push origin v1.1.0   # el tag dispara el CI release
 - **Notificaciones de la bandeja**: se eliminó `SetCurrentProcessExplicitAppUserModelID` del arranque; Windows atribuye el nombre del exe ("TomoDesk") a las notificaciones en lugar del AUMID crudo.
 - **Sin consolas fantasma**: `icacls` en `src/config/secure_files.py` se lanza con `creationflags=CREATE_NO_WINDOW` (de lo contrario Windows muestra una consola negra por cada ACL en el arranque).
 - **Modelo llama.cpp por defecto**: el repo `ggml-org/llama-3.2-1B-Instruct-GGUF` es ahora *gated* en HuggingFace (HTTP 401 sin token). El default es el espejo público `bartowski/Llama-3.2-1B-Instruct-GGUF` (mismo GGUF Q4_K_M, ~770MB); `load_config` migra automáticamente configs existentes con el repo legacy a bartowski. `download.py` traduce HTTP 401/403/404 a mensajes de error explicativos.
+- **Instalación de `llama-cpp-python` (Windows)**: PyPI solo tiene el sdist, que compila desde cero y falla sin MSVC/nmake. Usar `requirements-llama.txt`, que incluye `--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu` (wheels `py3` precompiladas, compatibles con Python 3.14). En Python largos, activar "Paso largo de ruta" (registry) si el instalador lo pide.
+- **Artefacto y proveedor llama_cpp**: el binario empaquetado lee su `config.yaml` de `user_config_dir()` (Windows `%APPDATA%\TomoDesk`), no del repo; el bootstrap usa `config.example.yaml` (`provider: ollama`). Cambiar de proveedor en Ajustes requiere "Guardar" y **reiniciar** la app (el provider se crea al arrancar). Además, el build "estándar" no incluye `llama-cpp-python`: para que el artefacto pueda usar el modelo local hay que buildar con `pip install -r requirements-llama.txt` de antes (ver Fase 3).
+- **Binario sin firmar en Windows**: Smart App Control / SmartScreen bloquean el exe no firmado; el usuario debe permitirlo manualmente. El firmado de código (p.ej. Azure Trusted Signing) queda pendiente.

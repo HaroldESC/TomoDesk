@@ -2,11 +2,19 @@
 #
 # NO es parte de requirements.txt: se instala solo cuando se quiere usar el
 # modelo embebido via llama.cpp sin Ollama/OpenAI. La base del binario no crece
-# porque esta dependencia no se bundlea en los builds "estandar".
+# porque esta dependencia solo viaja en builds que la instalen.
 #
 #   pip install -r requirements-llama.txt
 #
-# Esta linea instala la wheel CPU estandar de llama-cpp-python. Para builds con
-# aceleracion (CUDA/Metal/Vulkan) consulta la documentacion del proyecto y usa
-# el indice correspondiente (p.ej. pip install --index-url=... llama-cpp-python).
+# IMPORTANTE: llama-cpp-python NO publica wheels en PyPI (solo el sdist, que
+# requiere toolchain C/C++ tipo MSVC/nmake y compila todo desde cero). Las
+# wheels precompiladas de CPU estan en el indice oficial de abetlen
+# (https://abetlen.github.io/llama-cpp-python/whl/cpu) con tag universal `py3`,
+# compatibles con cualquier Python 3.x (incluido 3.14):
+#
+#   --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+#
+# Para builds con aceleracion (CUDA/Metal/Vulkan) consulta la documentacion del
+# proyecto y usa el indice correspondiente (p.ej. pip install --index-url=...).
+--extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 llama-cpp-python==0.3.35
