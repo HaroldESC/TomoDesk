@@ -25,6 +25,26 @@ def _safe_pack_name(name: str, fallback: str) -> str:
     return cleaned[:100]
 
 
+def packs_root(packs_dir: Path) -> Path:
+    """Return the effective packs root for a configured directory.
+
+    The configured directory is expected to be a root that *contains* packs, but
+    users may point it at the folder of a single pack (which directly holds a
+    ``manifest.json``/``manifest.yaml``). In that case the parent directory is
+    returned so all sibling packs are discoverable and ``active_pack`` resolution
+    by name keeps working.
+    """
+    if (packs_dir / MANIFEST_NAME).exists() or (packs_dir / LEGACY_MANIFEST_NAME).exists():
+        parent = packs_dir.parent
+        if parent != packs_dir:
+            logger.info(
+                "Packs dir %s is a single pack folder; scanning parent %s",
+                packs_dir, parent,
+            )
+            return parent
+    return packs_dir
+
+
 def _read_json(path: Path) -> Optional[dict]:
     try:
         with open(path, "r", encoding="utf-8") as f:
@@ -76,9 +96,10 @@ class PersonalityPackManager:
         self._phrases.clear()
 
         for source in self._scan_sources():
-            if not source.is_dir():
+            root = packs_root(source)
+            if not root.is_dir():
                 continue
-            for entry in sorted(source.iterdir()):
+            for entry in sorted(root.iterdir()):
                 if entry.is_dir():
                     self._load_pack(entry)
                 elif entry.suffix.lower() == ".zip":

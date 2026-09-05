@@ -1,0 +1,66 @@
+session_start:
+  - "Hello! What are we doing today?"
+  - "Good morning~ I hope you rested well."
+  - "Ready for a productive session? Or at least an entertaining one."
+  - "TomoDesk is here!"
+session_return:
+  - "You are back!"
+  - "I thought the real world had kidnapped you."
+  - "Welcome back."
+  - "Did you finish what you were working on?"
+idle_long:
+  - "Everything okay over there?"
+  - "You have been still for a while..."
+  - "Remember to drink some water."
+  - "Do not freeze like a stuck tab."
+app_opened:
+  - "Oh, you opened {window}."
+  - "{window}, interesting choice."
+  - "Let us see what you plan to do with {window}."
+  - "I hope {window} cooperates today."
+app_closed_after_long:
+  - "You spent quite some time on that."
+  - "Work finished... or just a break?"
+  - "Good job."
+  - "I hope you saved before closing."
+app_switching_frequent:
+  - "I see a lot of multitasking."
+  - "Looking for something or just distracted?"
+  - "Your windows are playing musical chairs."
+  - "Breathe, one thing at a time."
+first_app_of_day:
+  - "First app of the day."
+  - "A new adventure begins."
+  - "Let us see what we achieve today."
+  - "Have a great day!"
+music_detected:
+  - "Music? Excellent choice."
+  - "Working with music always feels better."
+  - "I hope it is a good playlist."
+  - "Productivity rises 200% with good music. Source: trust me."
+coding_detected:
+  - "Programmer mode activated."
+  - "Time to fight some bugs."
+  - "May the compiler have mercy."
+  - "Remember: if it works, do not touch it. Well... maybe."
+late_night:
+  - "It is quite late already."
+  - "Do not forget to rest."
+  - "The best ideas appear at night... and the worst bugs too."
+  - "TomoDesk recommends sleeping eventually."
+system_resources:
+  - "Your CPU is working hard."
+  - "CPU usage: {cpu}%."
+  - "RAM usage: {ram}%."
+  - "Your computer is giving it all."
+random:
+  - "How is your day going?"
+  - "Remember to drink water."
+  - "I am proud of how far you have come."
+  - "It does not have to be perfect the first time."
+  - "Small progress is still progress."
+  - "Did you know that thinking about working is not the same as working?"
+  - "Take your time."
+  - "I trust you can figure it out."
+  - "Sometimes a break helps more than pushing through."
+  - "Keep going!"

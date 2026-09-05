@@ -179,3 +179,45 @@ class TestPersonalityPackManager:
         assert mgr.get_pack_info("mypack")["version"] == "2.0.0"
         mgr.set_active_pack("mypack")
         assert mgr.get_phrases("greeting") == ["User greeting"]
+
+    def test_directory_pointing_to_pack_folder_scans_parent(self, tmp_path):
+        first = tmp_path / "first_pack"
+        first.mkdir()
+        (first / "manifest.json").write_text(json.dumps({
+            "name": "first_pack", "format": "personality-pack-v1",
+            "type": "personality",
+        }), encoding="utf-8")
+        phrases_dir = first / "phrases"
+        phrases_dir.mkdir()
+        (phrases_dir / "greeting.json").write_text(
+            json.dumps({"greeting": ["First"]}), encoding="utf-8")
+
+        sibling = tmp_path / "sibling_pack"
+        sibling.mkdir()
+        (sibling / "manifest.json").write_text(json.dumps({
+            "name": "sibling_pack", "format": "personality-pack-v1",
+            "type": "personality",
+        }), encoding="utf-8")
+
+        mgr = PersonalityPackManager(str(first))
+        mgr.scan_packs()
+        assert sorted(mgr.list_packs()) == ["first_pack", "sibling_pack"]
+        mgr.set_active_pack("first_pack")
+        assert mgr.get_phrases("greeting") == ["First"]
+
+    def test_directory_pointing_to_pack_folder_legacy_manifest(self, tmp_path):
+        pack = tmp_path / "legacy_pack"
+        pack.mkdir()
+        (pack / "manifest.yaml").write_text(
+            yaml.dump({"name": "legacy_pack", "type": "personality"}),
+            encoding="utf-8")
+        phrases_dir = pack / "phrases"
+        phrases_dir.mkdir()
+        (phrases_dir / "greeting.yaml").write_text(
+            yaml.dump({"greeting": ["Hola"]}), encoding="utf-8")
+
+        mgr = PersonalityPackManager(str(pack))
+        mgr.scan_packs()
+        assert "legacy_pack" in mgr.list_packs()
+        mgr.set_active_pack("legacy_pack")
+        assert mgr.get_phrases("greeting") == ["Hola"]

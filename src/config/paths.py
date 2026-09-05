@@ -30,7 +30,7 @@ _USER = "user"
 # (clave, subclave) -> (base, default relativo)
 _PATH_POLICY: dict[tuple[str, ...], tuple[str, str]] = {
     ("paths", "locales"): (_RESOURCE, "data/locales"),
-    ("paths", "comments_yaml"): (_RESOURCE, "data/comments.yaml"),
+    ("paths", "comments_yaml"): (_RESOURCE, "data/comments_en.yaml"),
     ("database", "sqlite_path"): (_USER, "data/tomodesk.db"),
     ("memory", "chroma_persist_path"): (_USER, "chroma_db"),
     ("personality_packs", "directory"): (_USER, "data/personality_packs"),

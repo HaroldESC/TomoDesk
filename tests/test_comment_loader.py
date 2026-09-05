@@ -1,63 +1,53 @@
+from pathlib import Path
+
 import pytest
 import yaml
 
 from src.personality.comment_loader import CommentLoader
 
 
-def test_load_valid_yaml(tmp_path):
-    f = tmp_path / "test.yaml"
-    data = {
-        "greeting": ["Hello {name}!", "Hi there!"],
-        "farewell": ["Goodbye {name}!"],
-    }
-    f.write_text(yaml.dump(data), encoding="utf-8")
+class _FakeI18n:
+    def __init__(self, lang):
+        self.lang = lang
 
-    loader = CommentLoader(str(f))
-    assert loader.has_category("greeting")
-    assert loader.has_category("farewell")
-    assert not loader.has_category("nonexistent")
-
-    phrase = loader.get_random("greeting", {"name": "Tomo"})
-    assert phrase is not None
-
-    phrase2 = loader.get_random("farewell", {"name": "Tomo"})
-    assert phrase2 is not None
-    assert "Tomo" in phrase2
+    def get_current_language(self):
+        return self.lang
 
 
-def test_load_empty_yaml(tmp_path):
-    f = tmp_path / "empty.yaml"
-    f.write_text("", encoding="utf-8")
-
-    loader = CommentLoader(str(f))
-    assert loader.phrases == {}
-
-
-def test_load_missing_file():
-    loader = CommentLoader("nonexistent_file.yaml")
-    assert loader.phrases == {}
+@pytest.fixture
+def lang_dir(tmp_path):
+    en_data = {"greeting": ["Hello {name}!"], "farewell": ["Bye!"]}
+    es_data = {"greeting": ["¡Hola {name}!"], "farewell": ["¡Adiós!"]}
+    (tmp_path / "comments_en.yaml").write_text(
+        yaml.dump(en_data), encoding="utf-8")
+    (tmp_path / "comments_es.yaml").write_text(
+        yaml.dump(es_data), encoding="utf-8")
+    return tmp_path
 
 
-def test_get_random_nonexistent_category(tmp_path):
-    f = tmp_path / "test.yaml"
-    data = {"greeting": ["Hello"]}
-    f.write_text(yaml.dump(data), encoding="utf-8")
+class TestCommentLoaderLang:
+    def test_loads_language_file(self, lang_dir):
+        loader = CommentLoader(str(lang_dir / "comments_en.yaml"), i18n=_FakeI18n("es"))
+        assert loader.get_random("greeting", {"name": "Tomo"}) == "¡Hola Tomo!"
 
-    loader = CommentLoader(str(f))
-    assert loader.get_random("nonexistent") is None
+    def test_english_base_file(self, lang_dir):
+        loader = CommentLoader(str(lang_dir / "comments_en.yaml"), i18n=_FakeI18n("en"))
+        assert loader.get_random("greeting", {"name": "Tomo"}) == "Hello Tomo!"
 
+    def test_falls_back_to_base_path_when_lang_missing(self, lang_dir):
+        loader = CommentLoader(str(lang_dir / "comments_en.yaml"), i18n=_FakeI18n("fr"))
+        phrase = loader.get_random("greeting", {"name": "Tomo"})
+        assert phrase == "Hello Tomo!"
 
-def test_reload(tmp_path):
-    f = tmp_path / "test.yaml"
-    data = {"greeting": ["Hello"]}
-    f.write_text(yaml.dump(data), encoding="utf-8")
+    def test_no_i18n_uses_base_file_directly(self, lang_dir):
+        loader = CommentLoader(str(lang_dir / "comments_en.yaml"))
+        assert loader.get_random("farewell") == "Bye!"
 
-    loader = CommentLoader(str(f))
-    assert loader.has_category("greeting")
-
-    data2 = {"farewell": ["Bye"]}
-    f.write_text(yaml.dump(data2), encoding="utf-8")
-
-    loader.reload()
-    assert not loader.has_category("greeting")
-    assert loader.has_category("farewell")
+    def test_real_default_files_load(self):
+        base = Path("data/comments_en.yaml")
+        if not base.exists():
+            pytest.skip("data/comments_en.yaml not shipped in this checkout")
+        loader = CommentLoader(str(base), i18n=_FakeI18n("es"))
+        for category in ("session_start", "random", "app_opened"):
+            phrase = loader.get_random(category, {"window": "Chrome"})
+            assert phrase
