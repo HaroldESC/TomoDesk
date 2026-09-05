@@ -144,6 +144,15 @@ class TestLoadConfig:
         assert "memory" in loaded
         assert "llm" in loaded
 
+    def test_load_config_creates_modes_defaults(self, tmp_path):
+        config = {"logs": {"debug_prompts": False}}
+        path = tmp_path / "config.yaml"
+        path.write_text(yaml.safe_dump(config), encoding="utf-8")
+        loaded = load_config(path)
+        assert loaded["modes"]["proactive_comments"] is False
+        assert loaded["modes"]["proactive_cooldown_seconds"] == 1800
+        assert loaded["modes"]["comment_probability"] == 0.1
+
     def test_load_config_bootstraps_from_example(self, tmp_path):
         example = tmp_path / "config.example.yaml"
         example.write_text(

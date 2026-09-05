@@ -46,6 +46,12 @@ _NESTED_DEFAULTS: dict[str, dict] = {
         "name": "TomoDesk",
         "traits": "friendly, curious, helpful",
     },
+    "modes": {
+        "comment_probability": 0.1,
+        "max_comments_per_hour": 2,
+        "proactive_comments": False,
+        "proactive_cooldown_seconds": 1800,
+    },
     "context": {
         "directory": "data/context_packs",
     },
