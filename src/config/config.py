@@ -43,7 +43,7 @@ _NESTED_DEFAULTS: dict[str, dict] = {
         },
     },
     "personality": {
-        "name": "TomoDesk",
+        "name": "Tomo",
         "traits": "friendly, curious, helpful",
     },
     "modes": {

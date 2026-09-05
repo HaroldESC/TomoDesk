@@ -32,7 +32,7 @@ modes:
   proactive_comments: false
   proactive_cooldown_seconds: 1800
 paths:
-  comments_yaml: data/comments.yaml
+  comments_yaml: data/comments_en.yaml
   locales: data/locales
 personality:
   initial_closeness: 0.2
@@ -40,7 +40,7 @@ personality:
   initial_curiosity: 0.6
   initial_energy: 0.8
   initial_happiness: 0.62
-  name: TomoDesk
+  name: Tomo
   traits: friendly, curious, helpful
 personality_packs:
   active_pack: Default

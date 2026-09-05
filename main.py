@@ -495,7 +495,7 @@ def run_cli(config):
 
     logger.info("Ollama connected. Starting chat...")
     print(f"\n{'='*50}")
-    print(f"  {i18n.t('app.title', name=config['personality']['name'])} is ready!")
+    print(f"  {i18n.t('status.ready_message', name=config['personality']['name'])}")
     print(f"  Model: {config['llm']['model']}")
     print(i18n.t('commands.help_text'))
     print(f"{'='*50}\n")

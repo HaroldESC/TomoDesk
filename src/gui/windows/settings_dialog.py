@@ -29,6 +29,7 @@ from src.config.paths import (
 from src.context.context_pack import ContextPackManager
 from src.gui.sprites.sprite_loader import SpriteLoader
 from src.gui.styles.styles import get_style_set
+from src.personality.personality_pack import packs_root
 
 
 if sys.platform == "win32":
@@ -413,7 +414,7 @@ class SettingsDialog(QDialog):
 
     def _populate_pack_list(self, directory):
         self.pack_active.clear()
-        pack_dir = Path(directory)
+        pack_dir = packs_root(Path(directory))
         if pack_dir.is_dir():
             for entry in sorted(pack_dir.iterdir()):
                 if entry.is_dir() and (
@@ -936,10 +937,12 @@ class SettingsDialog(QDialog):
         layout.addWidget(open_log_btn)
 
     def _build_advanced_about(self, layout):
+        from src import __version__
         about_text = QLabel(
             self.i18n.t("app.about_text",
                         name=self.config["personality"]["name"],
-                        model=self.config["llm"]["model"])
+                        model=self.config["llm"]["model"],
+                        version=__version__)
         )
         about_text.setWordWrap(True)
         layout.addWidget(about_text)
@@ -1125,7 +1128,7 @@ class SettingsDialog(QDialog):
             str(user_resolve(self.pack_directory.text())),
         )
         if path:
-            self.pack_directory.setText(path)
+            self.pack_directory.setText(str(packs_root(Path(path))))
             self._on_reload_packs()
 
     def _on_reload_packs(self):

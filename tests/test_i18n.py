@@ -155,7 +155,18 @@ def test_load_full_locale_files():
     assert i18n.t("menu.file") == "&File"
     assert i18n.t("chat.send_button") == "Send"
     assert i18n.t("dialogs.notes.title") == "Notes"
+    assert i18n.t("app.about_text", name="Tomo", model="llama",
+                  version="1.2.0") == "TomoDesk v1.2.0\n\nDesktop Companion & AI Agent\n\nCharacter: Tomo\nModel: llama\n\nA private, local-first desktop companion."
+    assert i18n.t("status.listening", name="Tomo") == "Tomo is listening."
+    assert i18n.t("commands.clear_success", name="Tomo") == \
+        "Short-term memory cleared. Tomo will not remember this conversation."
+    assert "role_assistant" not in i18n.translations["en"]["chat"]
     i18n.set_language("es")
     assert i18n.t("menu.file") == "&Archivo"
     assert i18n.t("chat.send_button") == "Enviar"
     assert i18n.t("dialogs.notes.title") == "Notas"
+    assert i18n.t("status.curious", name="Tomo") == \
+        "Tomo tiene curiosidad por lo que haces..."
+    assert i18n.t("commands.clear_success", name="Tomo") == \
+        "Memoria a corto plazo limpiada. Tomo no recordará esta conversación."
+    assert "role_assistant" not in i18n.translations["es"]["chat"]

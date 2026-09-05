@@ -2,7 +2,7 @@
   "app": {
     "title": "TomoDesk - {name}",
     "about_title": "About TomoDesk",
-    "about_text": "TomoDesk v0.1.0\n\nDesktop Companion & AI Agent\n\nCharacter: {name}\nModel: {model}\n\nA private, local-first desktop companion.",
+    "about_text": "TomoDesk v{version}\n\nDesktop Companion & AI Agent\n\nCharacter: {name}\nModel: {model}\n\nA private, local-first desktop companion.",
     "model_license_note": "Chat models may carry their own licenses (e.g. Meta Llama 3.2 uses the Llama Community License, not MIT). See README for details."
   },
   "menu": {
@@ -55,8 +55,6 @@
     "focus_mode_on": "Focus mode ACTIVATED.",
     "focus_mode_off": "Focus mode DEACTIVATED.",
     "reminder_prefix": "⏰ REMINDER: {message}",
-    "role_user": "You:",
-    "role_assistant": "Tomo:",
     "role_system": ""
   },
   "commands": {
@@ -107,7 +105,7 @@
     "memory_not_found": "Memory #{id} not found.",
     "no_important_memories": "No high-importance memories found. Importance threshold: 0.7",
     "important_memories_header": "Important memories ({count} found):",
-    "clear_success": "Short-term memory cleared. Tomo will not remember this conversation.",
+    "clear_success": "Short-term memory cleared. {name} will not remember this conversation.",
     "proactive_unavailable": "Proactive engine not available.",
     "proactive_on": "Proactive comments enabled.",
     "proactive_off": "Proactive comments disabled.",
@@ -358,15 +356,15 @@
     "curiosity": "Character's current curiosity level",
     "closeness": "Character's current closeness level",
     "proactive": "Indicates whether proactive mode is enabled or disabled",
-    "sleeping": "Tomo fell asleep... 💤",
+    "sleeping": "{name} fell asleep... 💤",
     "sleeping_low_energy": "So tired... need to rest... 💤",
     "waking_up": "Good morning! 😊",
     "waking_up_energized": "Ahh... I feel much better after that nap! 😊",
-    "distant": "Tomo feels a little distant...",
-    "tired": "Tomo is tired... time for a break?",
-    "radiant": "Tomo is radiant today ✨",
-    "curious": "Tomo is curious about what you're doing...",
-    "listening": "Tomo is listening."
+    "distant": "{name} feels a little distant...",
+    "tired": "{name} is tired... time for a break?",
+    "radiant": "{name} is radiant today ✨",
+    "curious": "{name} is curious about what you're doing...",
+    "listening": "{name} is listening."
   },
   "tray": {
     "welcome_title": "TomoDesk",

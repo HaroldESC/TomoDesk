@@ -17,6 +17,7 @@ from src.gui.windows.notes_dialog import NotesDialog
 from src.gui.windows.reminders_dialog import RemindersDialog
 from src.gui.windows.settings_dialog import SettingsDialog
 from src.gui.styles.styles import get_style_set
+from src import __version__
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +174,7 @@ class MainWindow(QMainWindow):
         if not self.state_manager:
             return
         state = self.state_manager.get_state()
+        name = self.config["personality"]["name"]
         idle_sec = 0
         if self.event_monitor:
             try:
@@ -183,17 +185,17 @@ class MainWindow(QMainWindow):
                 pass
 
         if idle_sec > 600:
-            msg = self.i18n.t("status.sleeping")
+            msg = self.i18n.t("status.sleeping", name=name)
         elif state["connection"] < 0.2:
-            msg = self.i18n.t("status.distant")
+            msg = self.i18n.t("status.distant", name=name)
         elif state["energy"] < 0.3:
-            msg = self.i18n.t("status.tired")
+            msg = self.i18n.t("status.tired", name=name)
         elif state["happiness"] > 0.8:
-            msg = self.i18n.t("status.radiant")
+            msg = self.i18n.t("status.radiant", name=name)
         elif state["curiosity"] > 0.7:
-            msg = self.i18n.t("status.curious")
+            msg = self.i18n.t("status.curious", name=name)
         else:
-            msg = self.i18n.t("status.listening")
+            msg = self.i18n.t("status.listening", name=name)
 
         self.mood_label.setText(msg)
         tooltip = (
@@ -361,8 +363,8 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             self.i18n.t("app.about_title"),
-            f"<h3>TomoDesk v0.1.0</h3>"
-            f"<p>{self.i18n.t('app.about_text', name=self.config['personality']['name'], model=self.config['llm']['model'])}</p>"
+            f"<h3>TomoDesk v{__version__}</h3>"
+            f"<p>{self.i18n.t('app.about_text', name=self.config['personality']['name'], model=self.config['llm']['model'], version=__version__)}</p>"
             f"<hr><p><small>Powered by PySide6 and Ollama</small></p>"
             f"<p><small>{self.i18n.t('app.model_license_note')}</small></p>",
         )

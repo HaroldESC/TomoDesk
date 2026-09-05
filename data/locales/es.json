@@ -2,7 +2,7 @@
   "app": {
     "title": "TomoDesk - {name}",
     "about_title": "Acerca de TomoDesk",
-    "about_text": "TomoDesk v0.1.0\n\nCompañero de escritorio y agente IA\n\nPersonaje: {name}\nModelo: {model}\n\nUn compañero privado y local.",
+    "about_text": "TomoDesk v{version}\n\nCompañero de escritorio y agente IA\n\nPersonaje: {name}\nModelo: {model}\n\nUn compañero privado y local.",
     "model_license_note": "Los modelos de chat pueden tener su propia licencia (p. ej. Meta Llama 3.2 usa la Licencia de Comunidad Llama, no MIT). Ver README para más detalles."
   },
   "menu": {
@@ -55,8 +55,6 @@
     "focus_mode_on": "Modo concentración ACTIVADO.",
     "focus_mode_off": "Modo concentración DESACTIVADO.",
     "reminder_prefix": "⏰ RECORDATORIO: {message}",
-    "role_user": "Tú:",
-    "role_assistant": "Tomo:",
     "role_system": ""
   },
   "commands": {
@@ -107,7 +105,7 @@
     "memory_not_found": "Memoria #{id} no encontrada.",
     "no_important_memories": "No se encontraron memorias de alta importancia. Umbral: 0.7",
     "important_memories_header": "Memorias importantes ({count} encontradas):",
-    "clear_success": "Memoria a corto plazo limpiada. Tomo no recordará esta conversación.",
+    "clear_success": "Memoria a corto plazo limpiada. {name} no recordará esta conversación.",
     "proactive_unavailable": "Motor proactivo no disponible.",
     "proactive_on": "Comentarios proactivos activados.",
     "proactive_off": "Comentarios proactivos desactivados.",
@@ -358,15 +356,15 @@
     "curiosity": "Nivel de curiosidad actual del personaje",
     "closeness": "Nivel de cercanía actual del personaje",
     "proactive": "Indica si el modo proactivo está activado o desactivado",
-    "sleeping": "Tomo se quedó dormido... 💤",
+    "sleeping": "{name} se quedó dormido... 💤",
     "sleeping_low_energy": "Tan cansada... necesito descansar... 💤",
     "waking_up": "Buenos días! 😊",
     "waking_up_energized": "Ahh... me siento mucho mejor después de esa siesta! 😊",
-    "distant": "Tomo se siente un poco distante...",
-    "tired": "Tomo está cansado... ¿hora de un descanso?",
-    "radiant": "Tomo está radiante hoy ✨",
-    "curious": "Tomo tiene curiosidad por lo que haces...",
-    "listening": "Tomo está escuchando."
+    "distant": "{name} se siente un poco distante...",
+    "tired": "{name} está cansado... ¿hora de un descanso?",
+    "radiant": "{name} está radiante hoy ✨",
+    "curious": "{name} tiene curiosidad por lo que haces...",
+    "listening": "{name} está escuchando."
   },
   "tray": {
     "welcome_title": "TomoDesk",

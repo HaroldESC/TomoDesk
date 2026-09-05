@@ -167,11 +167,15 @@ class TestMainWindow:
 
     @patch("PySide6.QtWidgets.QMessageBox.about")
     def test_about_dialog(self, mock_about, qtbot, mock_memory_manager, mock_config, mock_i18n):
+        from src import __version__
         from src.gui.windows.main_window import MainWindow
         window = MainWindow(config=mock_config, memory_manager=mock_memory_manager, i18n=mock_i18n)
         qtbot.addWidget(window)
         window._show_about()
         mock_about.assert_called_once()
+        body = mock_about.call_args[0][2]
+        assert f"TomoDesk v{__version__}" in body
+        assert "v0.1.0" not in body
 
     @patch("PySide6.QtWidgets.QDialog.exec", return_value=0)
     def test_open_notes_dialog(self, mock_exec, qtbot, mock_memory_manager, mock_config, mock_i18n):

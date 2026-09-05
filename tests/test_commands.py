@@ -1,12 +1,21 @@
 import pytest
 
 from src.system.commands import (
+    cmd_clear,
     cmd_exit,
     cmd_help,
     cmd_note_add,
     cmd_note_list,
     handle_command,
 )
+
+
+class _FormatI18n:
+    def t(self, key, **kwargs):
+        if key == "commands.clear_success":
+            name = kwargs.get("name", "Tomo")
+            return f"cleared by {name}"
+        return key
 
 
 def test_cmd_exit():
@@ -18,6 +27,20 @@ def test_cmd_help(mock_i18n):
     msg, continue_loop = handle_command("/help", None, {}, i18n=mock_i18n)
     assert continue_loop is True
     assert "commands.help_text" in msg
+
+
+def test_cmd_clear_uses_character_name(memory_manager):
+    msg, continue_loop = cmd_clear(
+        "", memory_manager, {"personality": {"name": "Lin"}}, i18n=_FormatI18n()
+    )
+    assert continue_loop is True
+    assert msg == "cleared by Lin"
+
+
+def test_cmd_clear_fallback_name(memory_manager):
+    msg, continue_loop = cmd_clear("", memory_manager, {}, i18n=_FormatI18n())
+    assert continue_loop is True
+    assert msg == "cleared by Tomo"
 
 
 def test_note_add_and_list(memory_manager, mock_i18n):

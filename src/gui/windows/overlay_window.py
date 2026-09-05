@@ -487,7 +487,8 @@ class OverlayWindow(QWidget):
             msg = self.i18n.t("status.sleeping_low_energy",
                               default="So tired... need to rest... 💤")
         else:
-            msg = self.i18n.t("status.sleeping",
+            name = self.config.get("personality", {}).get("name", "Tomo")
+            msg = self.i18n.t("status.sleeping", name=name,
                               default="Zzz... falling asleep... 💤")
         self.show_bubble_text(msg, reset_timer=False)
 

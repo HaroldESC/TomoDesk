@@ -353,7 +353,8 @@ def _cmd_memories_important(memory_manager, **kwargs) -> Tuple[Optional[str], bo
 def cmd_clear(args, memory_manager, config, **kwargs) -> Tuple[Optional[str], bool]:
     i18n = kwargs.get('i18n')
     memory_manager.clear_short_term()
-    return (i18n.t("commands.clear_success"), True)
+    name = config.get("personality", {}).get("name", "Tomo")
+    return (i18n.t("commands.clear_success", name=name), True)
 
 
 def cmd_proactive(
