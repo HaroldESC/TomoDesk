@@ -2,6 +2,8 @@ import datetime
 import logging
 from typing import Dict, Optional, Tuple
 
+from src.config.config import save_config
+from src.config.logging_config import set_console_debug
 from src.llm import download
 from src.memory.memory import MemoryManager
 
@@ -37,6 +39,7 @@ def handle_command(
         "/episodic": cmd_episodic_stats,
         "/gui": cmd_gui,
         "/model": cmd_model,
+        "/debug": cmd_debug,
     }
 
     handler = handlers.get(command)
@@ -529,3 +532,34 @@ def _llama_cpp_installed() -> bool:
         return True
     except ImportError:
         return False
+
+
+def cmd_debug(args, memory_manager, config, **kwargs) -> Tuple[Optional[str], bool]:
+    i18n = kwargs.get('i18n')
+    action = args.strip().lower()
+
+    logs = config.setdefault("logs", {})
+    current = bool(logs.get("debug_prompts", False))
+
+    if action in ("on", "off"):
+        enable = action == "on"
+    elif action == "":
+        enable = not current
+    else:
+        return (i18n.t("commands.debug_usage"), True)
+
+    logs["debug_prompts"] = enable
+
+    try:
+        save_config(config)
+    except Exception:
+        logger.exception("No se pudo guardar el config con debug_prompts")
+
+    try:
+        set_console_debug(enable)
+    except Exception:
+        logger.exception("No se pudo ajustar el nivel de consola")
+
+    if enable:
+        return (i18n.t("commands.debug_on"), True)
+    return (i18n.t("commands.debug_off"), True)

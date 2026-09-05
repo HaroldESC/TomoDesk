@@ -1,3 +1,4 @@
+import logging
 from unittest.mock import MagicMock
 
 import pytest
@@ -75,3 +76,45 @@ def test_build_proactive_prompt(config, mock_context_builder, mock_memory_manage
 
     assert messages[-1]["role"] == "user"
     assert "You noticed: User opened Spotify" in messages[-1]["content"]
+
+
+def test_build_messages_debug_prompt_dumped_when_enabled(
+    config, mock_context_builder, mock_memory_manager, caplog
+):
+    config["logs"] = {"debug_prompts": True}
+    builder = PromptBuilder(config, mock_context_builder, mock_memory_manager)
+
+    with caplog.at_level(logging.DEBUG, logger="src.llm.prompts"):
+        builder.build_messages("Hello", emotional_state={"happiness": 0.5})
+
+    assert "=== PROMPT (chat) ===" in caplog.text
+    assert "--- system ---" in caplog.text
+    assert "You are Tomo" in caplog.text
+    assert "--- user ---" in caplog.text
+    assert "Hello" in caplog.text
+
+
+def test_build_proactive_prompt_debug_dumped_when_enabled(
+    config, mock_context_builder, mock_memory_manager, caplog
+):
+    config["logs"] = {"debug_prompts": True}
+    builder = PromptBuilder(config, mock_context_builder, mock_memory_manager)
+
+    with caplog.at_level(logging.DEBUG, logger="src.llm.prompts"):
+        builder.build_proactive_prompt("User opened Spotify")
+
+    assert "=== PROMPT (proactive) ===" in caplog.text
+    assert "User opened Spotify" in caplog.text
+    assert "=== END PROMPT ===" in caplog.text
+
+
+def test_build_messages_debug_prompt_off_by_default(
+    config, mock_context_builder, mock_memory_manager, caplog
+):
+    config["logs"] = {"debug_prompts": False}
+    builder = PromptBuilder(config, mock_context_builder, mock_memory_manager)
+
+    with caplog.at_level(logging.DEBUG, logger="src.llm.prompts"):
+        builder.build_messages("Hello")
+
+    assert "PROMPT" not in caplog.text

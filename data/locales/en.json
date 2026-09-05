@@ -60,7 +60,7 @@
     "role_system": ""
   },
   "commands": {
-    "help_text": "Available commands:\n  /note <title> | <content> - Save a note\n  /remind <minutes> <message> - Set a reminder\n  /remember <text> - Save an episodic memory\n  /memories - List recent episodic memories\n  /mood - Show current mood\n  /context - Show current context\n  /proactive [on|off] - Toggle proactive comments\n  /model [status|download] - Manage the local LLM model\n  /help - Show this help\n  /exit - Quit TomoDesk",
+    "help_text": "Available commands:\n  /note <title> | <content> - Save a note\n  /remind <minutes> <message> - Set a reminder\n  /remember <text> - Save an episodic memory\n  /memories - List recent episodic memories\n  /mood - Show current mood\n  /context - Show current context\n  /proactive [on|off] - Toggle proactive comments\n  /model [status|download] - Manage the local LLM model\n  /debug [on|off] - Log the exact prompt sent to the model\n  /help - Show this help\n  /exit - Quit TomoDesk",
     "note_saved": "Note #{id} saved: {title}",
     "note_updated": "Note #{id} updated",
     "note_deleted": "Note #{id} deleted",
@@ -144,6 +144,9 @@
     "model_already_downloaded": "The model is already downloaded.",
     "model_deleted": "Model removed: {path}",
     "model_not_present": "No local model file found.",
+    "debug_usage": "Usage: /debug [on|off]",
+    "debug_on": "Prompt debug enabled. The exact prompt sent to the model is logged at DEBUG level (see tomodesk.log). In CLI mode the console shows it too.",
+    "debug_off": "Prompt debug disabled.",
     "memory_preview": "Memory saved (importance: {importance:.1f}): \"{preview}\"",
     "note_item": "#{id} - {title}",
     "reminder_item": "#{id} - {message} (at {time})",
@@ -298,6 +301,7 @@
       "db_compact_done": "Database compacted successfully",
       "advanced_logs": "Logs",
       "log_level": "Log level:",
+      "debug_prompts": "Log prompts sent to the model (to tomodesk.log)",
       "log_open_folder": "Open logs folder",
       "advanced_about": "About",
       "tutorial_play": "Play initial tutorial",

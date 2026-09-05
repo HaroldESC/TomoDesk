@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QGroupBox, QMessageBox
+from PySide6.QtWidgets import QGroupBox, QMessageBox, QSizePolicy
 
 from src.context.context_pack import ContextPackManager
 
@@ -94,6 +94,42 @@ class TestSettingsSearch:
         hidden = [g for g in page.findChildren(QGroupBox)
                   if g.property("_search_text") and g.isHidden()]
         assert len(hidden) == 0
+
+
+class TestSettingsNavSizing:
+    def test_nav_width_fits_content(self, qtbot, mock_config, mock_i18n):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        hint = dialog._nav.sizeHintForColumn(0)
+        assert hint > 0
+        assert dialog._nav.minimumWidth() >= hint
+
+    def test_nav_uses_all_vertical_space(self, qtbot, mock_config, mock_i18n):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        assert (
+            dialog._nav.sizePolicy().verticalPolicy()
+            == QSizePolicy.Policy.Expanding
+        )
+        assert (
+            dialog._nav.horizontalScrollBarPolicy()
+            == Qt.ScrollBarAlwaysOff
+        )
+
+
+class TestAdvancedLogs:
+    def test_debug_prompts_checkbox_defaults_off(self, qtbot, mock_config, mock_i18n):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        assert not dialog.debug_prompts.isChecked()
+
+    def test_debug_prompts_checkbox_reads_config(self, qtbot, mock_config, mock_i18n):
+        mock_config["logs"] = {"debug_prompts": True}
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        assert dialog.debug_prompts.isChecked()
+
+    def test_debug_prompts_checkbox_saved(self, qtbot, mock_config, mock_i18n):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        dialog.debug_prompts.setChecked(True)
+        dialog._save_advanced()
+        assert mock_config["logs"]["debug_prompts"] is True
 
 
 class TestContextPacks:

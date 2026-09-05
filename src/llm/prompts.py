@@ -1,4 +1,7 @@
+import logging
 from typing import Dict, List
+
+logger = logging.getLogger(__name__)
 
 
 class PromptBuilder:
@@ -58,6 +61,7 @@ class PromptBuilder:
 
         messages.append({"role": "user", "content": user_input})
 
+        self._log_prompt(messages, "chat")
         return messages
 
     def build_proactive_prompt(
@@ -81,7 +85,20 @@ class PromptBuilder:
             }
         )
 
+        self._log_prompt(messages, "proactive")
         return messages
+
+    def _log_prompt(self, messages: List[Dict[str, str]], label: str) -> None:
+        logs = self._config.get("logs", {})
+        if not logs.get("debug_prompts", False):
+            return
+
+        block = [f"=== PROMPT ({label}) ==="]
+        for message in messages:
+            block.append(f"--- {message.get('role', '?')} ---")
+            block.append(str(message.get("content", "")))
+        block.append("=== END PROMPT ===")
+        logger.debug("\n" + "\n".join(block))
 
     def _build_system_prompt(self, emotional_state: Dict = None, state_manager=None) -> str:
         if self._i18n:

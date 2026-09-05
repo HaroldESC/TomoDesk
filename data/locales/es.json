@@ -60,7 +60,7 @@
     "role_system": ""
   },
   "commands": {
-    "help_text": "Comandos disponibles:\n  /note <título> | <contenido> - Guardar nota\n  /remind <minutos> <mensaje> - Crear recordatorio\n  /remember <texto> - Guardar memoria episódica\n  /memories - Listar memorias episódicas recientes\n  /mood - Mostrar estado de ánimo\n  /context - Mostrar contexto actual\n  /proactive [on|off] - Activar/desactivar comentarios proactivos\n  /model [status|download] - Gestionar el modelo LLM local\n  /help - Mostrar esta ayuda\n  /exit - Salir de TomoDesk",
+    "help_text": "Comandos disponibles:\n  /note <título> | <contenido> - Guardar nota\n  /remind <minutos> <mensaje> - Crear recordatorio\n  /remember <texto> - Guardar memoria episódica\n  /memories - Listar memorias episódicas recientes\n  /mood - Mostrar estado de ánimo\n  /context - Mostrar contexto actual\n  /proactive [on|off] - Activar/desactivar comentarios proactivos\n  /model [status|download] - Gestionar el modelo LLM local\n  /debug [on|off] - Registrar el prompt exacto enviado al modelo\n  /help - Mostrar esta ayuda\n  /exit - Salir de TomoDesk",
     "note_saved": "Nota #{id} guardada: {title}",
     "note_updated": "Nota #{id} actualizada",
     "note_deleted": "Nota #{id} eliminada",
@@ -144,6 +144,9 @@
     "model_already_downloaded": "El modelo ya está descargado.",
     "model_deleted": "Modelo eliminado: {path}",
     "model_not_present": "No se encontró ningún modelo local.",
+    "debug_usage": "Uso: /debug [on|off]",
+    "debug_on": "Debug de prompts activado. El prompt exacto enviado al modelo se registra a nivel DEBUG (ver tomodesk.log). En modo CLI también aparece en la consola.",
+    "debug_off": "Debug de prompts desactivado.",
     "memory_preview": "Memoria guardada (importancia: {importance:.1f}): \"{preview}\"",
     "note_item": "#{id} - {title}",
     "reminder_item": "#{id} - {message} (a las {time})",
@@ -298,6 +301,7 @@
       "db_compact_done": "Base de datos compactada exitosamente",
       "advanced_logs": "Registros",
       "log_level": "Nivel de registro:",
+      "debug_prompts": "Registrar prompts enviados al modelo (en tomodesk.log)",
       "log_open_folder": "Abrir carpeta de registros",
       "advanced_about": "Acerca de",
       "tutorial_play": "Reproducir tutorial inicial",

@@ -13,6 +13,7 @@ llm:
   timeout: 60
 logs:
   level: INFO
+  debug_prompts: false
 memory:
   auto_session_summary: false
   chroma_persist_path: ./chroma_db

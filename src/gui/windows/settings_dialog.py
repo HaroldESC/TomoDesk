@@ -11,8 +11,8 @@ from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFileDialog,
     QGroupBox, QHBoxLayout, QLabel, QLineEdit, QListWidget,
-    QMessageBox, QProgressDialog, QPushButton, QScrollArea, QSlider,
-    QSpinBox, QStackedWidget, QTextEdit, QVBoxLayout, QWidget,
+    QMessageBox, QProgressDialog, QPushButton, QScrollArea, QSizePolicy,
+    QSlider, QSpinBox, QStackedWidget, QTextEdit, QVBoxLayout, QWidget,
     QListWidgetItem,
 )
 
@@ -925,6 +925,12 @@ class SettingsDialog(QDialog):
         self.log_level.setCurrentText(level)
         self._add_row(layout, self.i18n.t("dialogs.settings.log_level"), self.log_level)
 
+        self.debug_prompts = QCheckBox(self.i18n.t("dialogs.settings.debug_prompts"))
+        self.debug_prompts.setChecked(
+            bool(self.config.get("logs", {}).get("debug_prompts", False))
+        )
+        layout.addWidget(self.debug_prompts)
+
         open_log_btn = QPushButton(self.i18n.t("dialogs.settings.log_open_folder"))
         open_log_btn.clicked.connect(self._on_open_logs_folder)
         layout.addWidget(open_log_btn)
@@ -1222,10 +1228,8 @@ class SettingsDialog(QDialog):
         nav_layout.setContentsMargins(4, 4, 4, 4)
         self._nav = QListWidget()
         self._nav.setObjectName("settings_nav")
-        self._nav.setFixedWidth(170)
         self._nav.setFocusPolicy(Qt.NoFocus)
         nav_layout.addWidget(self._nav)
-        nav_layout.addStretch()
         split.addWidget(sidebar, 0)
 
         self._stack = QStackedWidget()
@@ -1242,6 +1246,12 @@ class SettingsDialog(QDialog):
 
         self._nav.currentRowChanged.connect(self._stack.setCurrentIndex)
         self._nav.setCurrentRow(0)
+
+        self._nav.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self._nav.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self._nav.setMinimumWidth(
+            min(300, max(120, self._nav.sizeHintForColumn(0) + 36))
+        )
 
         btn_layout = QHBoxLayout()
         save_btn = QPushButton(self.i18n.t("dialogs.settings.save"))
@@ -1467,6 +1477,7 @@ class SettingsDialog(QDialog):
 
         logs = self.config.setdefault("logs", {})
         logs["level"] = self.log_level.currentText()
+        logs["debug_prompts"] = self.debug_prompts.isChecked()
 
     def _save_context(self):
         context = self.config.setdefault("context", {})
