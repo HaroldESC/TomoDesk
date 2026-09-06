@@ -229,6 +229,7 @@
       "character_packs": "Personality Packs",
       "pack_enabled": "Enable personality packs",
       "pack_active": "Active pack:",
+      "pack_name_hint": "The character name is defined by the active personality pack.",
       "pack_directory": "Pack directory:",
       "pack_reload": "Reload packs",
       "pack_delete": "Delete pack",

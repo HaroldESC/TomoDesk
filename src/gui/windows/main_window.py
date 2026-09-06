@@ -346,6 +346,7 @@ class MainWindow(QMainWindow):
                                 context_manager=self.overlay.context_manager if self.overlay else None)
         dialog.sprite_changed.connect(self.reload_sprite)
         dialog.language_changed.connect(self._apply_language)
+        dialog.character_changed.connect(self._apply_character_name)
         dialog.finished.connect(lambda: self._on_settings_closed(dialog))
         self._settings_dialog = dialog
         dialog.show()
@@ -358,6 +359,15 @@ class MainWindow(QMainWindow):
             )
         if hasattr(self, '_settings_dialog') and self._settings_dialog is dialog:
             self._settings_dialog = None
+        self._apply_character_name()
+
+    def _apply_character_name(self, name=None):
+        name = name or self.config.get("personality", {}).get("name", "Tomo")
+        self.config.setdefault("personality", {})["name"] = name
+        self.setWindowTitle(self.i18n.t("app.title", name=name))
+        if hasattr(self, "_char_menu"):
+            self._char_menu.setTitle(name)
+        self._update_status_message()
 
     def _show_about(self):
         QMessageBox.about(

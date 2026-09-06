@@ -290,3 +290,93 @@ class TestModelDownload:
 
         assert _soft_wrap_path("C:\\a\\b.gguf") == "C:\\\u200ba\\\u200bb.gguf"
         assert _soft_wrap_path("h/x.gguf") == "h/\u200bx.gguf"
+
+
+class _FakePackManager:
+    def __init__(self, directory, pack_folder, manifest_name):
+        from src.personality.personality_pack import PersonalityPackManager
+        self._pm = PersonalityPackManager(str(directory))
+        (directory / pack_folder).mkdir(exist_ok=True)
+        (directory / pack_folder / "manifest.json").write_text(json.dumps({
+            "name": manifest_name,
+            "format": "personality-pack-v1",
+            "type": "personality",
+        }), encoding="utf-8")
+        self._pm.scan_packs()
+
+    def __getattr__(self, name):
+        return getattr(self._pm, name)
+
+
+class TestCharacterPackNameSync:
+    def _config(self, tmp_path):
+        return {
+            "personality": {"name": "Tomo", "traits": "x"},
+            "llm": {"model": "m", "endpoint": "http://localhost:1"},
+            "modes": {},
+            "personality_packs": {
+                "enabled": True,
+                "directory": str(tmp_path),
+            },
+            "context": {"directory": "data/context_packs"},
+        }
+
+    def test_save_with_active_pack_sets_name(self, qtbot, mock_i18n, tmp_path):
+        from types import SimpleNamespace
+
+        pm = _FakePackManager(tmp_path, "Lin", manifest_name="Lin")
+        engine = SimpleNamespace(pack_manager=pm)
+        cfg = self._config(tmp_path)
+        dialog = _make_dialog(qtbot, cfg, mock_i18n, proactive_engine=engine)
+        dialog.pack_enabled.setChecked(True)
+        dialog.pack_active.setCurrentText("Lin")
+        dialog._save_character()
+        assert cfg["personality"]["name"] == "Lin"
+        assert cfg["personality_packs"]["active_pack"] == "Lin"
+        assert pm._active_pack == "Lin"
+        assert dialog.pers_name.text() == "Lin"
+        assert not dialog.pers_name.isEnabled()
+
+    def test_save_disabled_pack_keeps_manual_name(self, qtbot, mock_i18n, tmp_path):
+        from types import SimpleNamespace
+
+        pm = _FakePackManager(tmp_path, "Lin", manifest_name="Lin")
+        engine = SimpleNamespace(pack_manager=pm)
+        cfg = self._config(tmp_path)
+        dialog = _make_dialog(qtbot, cfg, mock_i18n, proactive_engine=engine)
+        dialog.pack_enabled.setChecked(False)
+        dialog.pers_name.setText("Zed")
+        dialog._save_character()
+        assert cfg["personality"]["name"] == "Zed"
+        assert cfg["personality_packs"]["active_pack"] is None
+        assert pm._active_pack is None
+        assert dialog.pers_name.isEnabled()
+
+    def test_folder_ref_resolves_to_manifest_key(self, qtbot, mock_i18n, tmp_path):
+        from types import SimpleNamespace
+
+        pm = _FakePackManager(tmp_path, "lin_folder", manifest_name="Lin")
+        engine = SimpleNamespace(pack_manager=pm)
+        cfg = self._config(tmp_path)
+        dialog = _make_dialog(qtbot, cfg, mock_i18n, proactive_engine=engine)
+        dialog.pack_enabled.setChecked(True)
+        dialog.pack_active.setCurrentText("lin_folder")
+        dialog._save_character()
+        assert cfg["personality_packs"]["active_pack"] == "Lin"
+        assert cfg["personality"]["name"] == "Lin"
+        assert pm._active_pack == "Lin"
+
+    def test_character_changed_emitted_once(self, qtbot, mock_i18n, tmp_path):
+        from types import SimpleNamespace
+
+        pm = _FakePackManager(tmp_path, "Lin", manifest_name="Lin")
+        engine = SimpleNamespace(pack_manager=pm)
+        cfg = self._config(tmp_path)
+        dialog = _make_dialog(qtbot, cfg, mock_i18n, proactive_engine=engine)
+        received = []
+        dialog.character_changed.connect(received.append)
+        dialog.pack_enabled.setChecked(True)
+        dialog.pack_active.setCurrentText("Lin")
+        dialog._save_character()
+        dialog._save_character()
+        assert received == ["Lin"]

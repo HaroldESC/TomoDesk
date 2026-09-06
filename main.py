@@ -54,9 +54,16 @@ def _init_pack_manager(config):
         bundled_dir=str(bundled) if bundled else None,
     )
     pm.scan_packs()
-    active_pack = config.get("personality_packs", {}).get("active_pack")
-    if active_pack:
+    pk = config.get("personality_packs", {})
+    active_pack = pk.get("active_pack")
+    enabled = bool(pk.get("enabled", False))
+    if enabled and active_pack:
         pm.set_active_pack(active_pack)
+        key = pm.resolve_pack(active_pack)
+        if key:
+            config.setdefault("personality", {})["name"] = pm.get_character_name(key)
+    else:
+        pm.set_active_pack(None)
     return pm
 
 

@@ -202,10 +202,53 @@ class PersonalityPackManager:
                 return pack_data[event_type]
         return None
 
+    def resolve_pack(self, ref: str) -> Optional[str]:
+        """Return the canonical pack key (manifest name) for ``ref``.
+
+        ``ref`` may be a manifest name, a manifest ``id``, the folder/ZIP stem
+        name or any of those case-insensitively (legacy configs often store the
+        folder name). Returns ``None`` when no pack matches.
+        """
+        if ref in self._packs:
+            return ref
+        for key, pack in self._packs.items():
+            manifest = pack.get("manifest") or {}
+            if manifest.get("id") == ref:
+                return key
+        for key, pack in self._packs.items():
+            path = pack.get("path")
+            stem = path.stem if isinstance(path, Path) else str(path)
+            if stem == ref:
+                return key
+        lowered = str(ref).lower()
+        for key, pack in self._packs.items():
+            manifest = pack.get("manifest") or {}
+            if str(manifest.get("name", "")).lower() == lowered \
+                    or str(manifest.get("id", "")).lower() == lowered:
+                return key
+            path = pack.get("path")
+            stem = path.stem if isinstance(path, Path) else str(path)
+            if stem.lower() == lowered:
+                return key
+        return None
+
+    def get_character_name(self, pack_name: str) -> str:
+        """Return the visible character name for a pack (manifest ``name``)."""
+        pack = self._packs.get(pack_name)
+        if not pack:
+            return pack_name
+        manifest = pack.get("manifest") or {}
+        path = pack.get("path")
+        folder = (path.stem if isinstance(path, Path) and path.stem else "") or pack_name
+        return _safe_pack_name(manifest.get("name", folder), folder)
+
     def set_active_pack(self, pack_name: Optional[str]):
         if pack_name is not None and pack_name not in self._packs:
-            logger.warning(f"Pack '{pack_name}' not found. Keeping current.")
-            return
+            resolved = self.resolve_pack(pack_name)
+            if resolved is None:
+                logger.warning(f"Pack '{pack_name}' not found. Keeping current.")
+                return
+            pack_name = resolved
         self._active_pack = pack_name
         logger.info(f"Active pack set to: {pack_name or 'default'}")
 

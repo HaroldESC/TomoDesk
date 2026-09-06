@@ -229,6 +229,7 @@
       "character_packs": "Paquetes de Personalidad",
       "pack_enabled": "Activar paquetes de personalidad",
       "pack_active": "Paquete activo:",
+      "pack_name_hint": "El nombre del personaje lo define el paquete de personalidad activo.",
       "pack_directory": "Directorio de paquetes:",
       "pack_reload": "Recargar paquetes",
       "pack_delete": "Eliminar paquete",

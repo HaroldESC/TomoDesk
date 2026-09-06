@@ -120,10 +120,17 @@ class TestPersonalityPackManager:
     def test_default_pack_loads(self):
         mgr = PersonalityPackManager("data/personality_packs")
         mgr.scan_packs()
-        assert "Default" in mgr.list_packs()
-        mgr.set_active_pack("Default")
+        assert "Tomo" in mgr.list_packs()
+        mgr.set_active_pack("Tomo")
         phrases = mgr.get_phrases("session_start")
         assert isinstance(phrases, list) and len(phrases) > 0
+        assert mgr._active_pack == "Tomo"
+
+    def test_legacy_folder_ref_resolves_to_manifest_name(self):
+        mgr = PersonalityPackManager("data/personality_packs")
+        mgr.scan_packs()
+        mgr.set_active_pack("Default")
+        assert mgr._active_pack == "Tomo"
 
     def test_bundled_and_user_packs_both_listed(self, tmp_path):
         user = tmp_path / "user"
@@ -221,3 +228,55 @@ class TestPersonalityPackManager:
         assert "legacy_pack" in mgr.list_packs()
         mgr.set_active_pack("legacy_pack")
         assert mgr.get_phrases("greeting") == ["Hola"]
+
+
+class TestPackNameResolution:
+    def _make(self, tmp_path, folder, manifest):
+        pack_path = tmp_path / folder
+        pack_path.mkdir()
+        (pack_path / "manifest.json").write_text(json.dumps({
+            "id": manifest.get("id", folder),
+            "name": manifest.get("name", folder),
+            "format": "personality-pack-v1",
+            "type": "personality",
+        }), encoding="utf-8")
+
+    def test_resolve_by_manifest_name(self, tmp_path):
+        self._make(tmp_path, "folder_a", {"name": "Alice", "id": "alice"})
+        mgr = PersonalityPackManager(str(tmp_path))
+        mgr.scan_packs()
+        assert mgr.resolve_pack("Alice") == "Alice"
+
+    def test_resolve_by_folder_name_case_insensitive(self, tmp_path):
+        self._make(tmp_path, "folder_b", {"name": "Bob", "id": "bob"})
+        mgr = PersonalityPackManager(str(tmp_path))
+        mgr.scan_packs()
+        assert mgr.resolve_pack("folder_b") == "Bob"
+        assert mgr.resolve_pack("FOLDER_B") == "Bob"
+
+    def test_resolve_by_id(self, tmp_path):
+        self._make(tmp_path, "folder_c", {"name": "Carol", "id": "carol-id"})
+        mgr = PersonalityPackManager(str(tmp_path))
+        mgr.scan_packs()
+        assert mgr.resolve_pack("carol-id") == "Carol"
+
+    def test_resolve_unknown_returns_none(self, tmp_path):
+        self._make(tmp_path, "folder_d", {"name": "Dave", "id": "dave"})
+        mgr = PersonalityPackManager(str(tmp_path))
+        mgr.scan_packs()
+        assert mgr.resolve_pack("nobody") is None
+
+    def test_get_character_name_falls_back_to_folder(self, tmp_path):
+        self._make(tmp_path, "folder_e", {"name": "", "id": "e"})
+        mgr = PersonalityPackManager(str(tmp_path))
+        mgr.scan_packs()
+        key = mgr.resolve_pack("folder_e")
+        assert key is not None
+        assert mgr.get_character_name(key) == "folder_e"
+
+    def test_set_active_pack_matches_folder_name(self, tmp_path):
+        self._make(tmp_path, "folder_f", {"name": "Fran", "id": "fran"})
+        mgr = PersonalityPackManager(str(tmp_path))
+        mgr.scan_packs()
+        mgr.set_active_pack("folder_f")
+        assert mgr._active_pack == "Fran"

@@ -94,6 +94,7 @@ def _soft_wrap_path(text: str) -> str:
 class SettingsDialog(QDialog):
     sprite_changed = Signal(str)
     language_changed = Signal()
+    character_changed = Signal(str)
 
     def __init__(self, config, proactive_engine=None, parent=None, i18n=None, styles=None,
                  context_manager=None):
@@ -276,6 +277,7 @@ class SettingsDialog(QDialog):
                         self._build_character_personality)
         self._add_group(layout, "dialogs.settings.character_mood", self._build_character_mood)
         layout.addStretch()
+        self._sync_pack_name_field()
 
     # ── 2b. Packs (Sprite + Personalidad + Contexto) ───────────────────────
 
@@ -339,11 +341,22 @@ class SettingsDialog(QDialog):
 
     def _build_character_personality(self, layout):
         pers = self.config.get("personality", {})
-        self.pers_name = QLineEdit(pers.get("name", "Tomo"))
+        self._manual_name = pers.get("name", "Tomo")
+        self.pers_name = QLineEdit(self._manual_name)
+        self.pers_name.textEdited.connect(self._on_manual_name_edited)
         self._add_row(layout, self.i18n.t("dialogs.settings.name"), self.pers_name)
+
+        self.pers_name_hint = QLabel(self.i18n.t("dialogs.settings.pack_name_hint"))
+        self.pers_name_hint.setProperty("colorRole", "muted")
+        self.pers_name_hint.setWordWrap(True)
+        self.pers_name_hint.setVisible(False)
+        layout.addWidget(self.pers_name_hint)
 
         self.pers_traits = QLineEdit(pers.get("traits", "friendly, curious, helpful"))
         self._add_row(layout, self.i18n.t("dialogs.settings.traits"), self.pers_traits)
+
+    def _on_manual_name_edited(self, text):
+        self._manual_name = text
 
     def _build_character_mood(self, layout):
         pers = self.config.get("personality", {})
@@ -386,6 +399,8 @@ class SettingsDialog(QDialog):
             else:
                 self.pack_active.setCurrentText(active)
         self._add_row(layout, self.i18n.t("dialogs.settings.pack_active"), self.pack_active)
+        self.pack_enabled.toggled.connect(self._sync_pack_name_field)
+        self.pack_active.currentTextChanged.connect(self._sync_pack_name_field)
 
         path_row = QHBoxLayout()
         self.pack_directory = QLineEdit(packs.get("directory", "data/personality_packs"))
@@ -423,6 +438,34 @@ class SettingsDialog(QDialog):
                     self.pack_active.addItem(entry.name)
                 elif entry.is_file() and entry.suffix == ".zip":
                     self.pack_active.addItem(entry.stem)
+
+    def _pack_manager(self):
+        engine = getattr(self, "proactive_engine", None)
+        if engine and hasattr(engine, "pack_manager"):
+            return engine.pack_manager
+        return None
+
+    def _resolve_active_pack_key(self, pack_ref):
+        pm = self._pack_manager()
+        if pm is None or not pack_ref:
+            return None
+        return pm.resolve_pack(pack_ref)
+
+    def _sync_pack_name_field(self):
+        if not hasattr(self, "pers_name"):
+            return
+        enabled = self.pack_enabled.isChecked()
+        pack_ref = (self.pack_active.currentText() or "").strip()
+        key = self._resolve_active_pack_key(pack_ref) if enabled and pack_ref else None
+        pm = self._pack_manager()
+        if key and pm is not None:
+            self.pers_name.setText(pm.get_character_name(key))
+            self.pers_name.setEnabled(False)
+            self.pers_name_hint.setVisible(True)
+        else:
+            self.pers_name.setText(self._manual_name)
+            self.pers_name.setEnabled(True)
+            self.pers_name_hint.setVisible(False)
 
     # ── 2c. Context Packs ─────────────────────────────────────────────────
 
@@ -1151,7 +1194,8 @@ class SettingsDialog(QDialog):
             logger.warning("No pack manager available")
             return
         pm = engine.pack_manager
-        pack = pm._packs.get(name)
+        key = pm.resolve_pack(name)
+        pack = pm._packs.get(key or name)
         if not pack:
             logger.warning(f"Pack '{name}' not found in manager")
             return
@@ -1165,12 +1209,16 @@ class SettingsDialog(QDialog):
                 logger.warning(f"Unknown pack path type: {pack_path}")
                 return
             logger.info(f"Deleted pack: {name}")
-            if pm._active_pack == name:
+            if pm._active_pack and key and pm._active_pack == key:
                 pm.set_active_pack(None)
+            packs = self.config.setdefault("personality_packs", {})
+            if packs.get("active_pack") in (name, key):
+                packs["active_pack"] = None
             pm.scan_packs()
             self._populate_pack_list(user_resolve(self.pack_directory.text()))
             self.pack_active.setCurrentIndex(-1)
             self.pack_delete_btn.setEnabled(False)
+            self._sync_pack_name_field()
         except Exception as e:
             logger.error(f"Failed to delete pack '{name}': {e}")
             QMessageBox.warning(
@@ -1388,7 +1436,6 @@ class SettingsDialog(QDialog):
         self.sprite_changed.emit(sprite_name)
 
         pers = self.config.setdefault("personality", {})
-        pers["name"] = self.pers_name.text()
         pers["traits"] = self.pers_traits.text()
         pers["initial_happiness"] = self.pers_initial_happiness.value() / 100.0
         pers["initial_energy"] = self.pers_initial_energy.value() / 100.0
@@ -1398,17 +1445,32 @@ class SettingsDialog(QDialog):
 
         packs = self.config.setdefault("personality_packs", {})
         packs["enabled"] = self.pack_enabled.isChecked()
-        packs["active_pack"] = self.pack_active.currentText() or None
         packs["directory"] = self.pack_directory.text()
+
+        pm = self._pack_manager()
+        pack_ref = (self.pack_active.currentText() or "").strip()
+        key = self._resolve_active_pack_key(pack_ref) if pm else None
+        packs["active_pack"] = key if (packs["enabled"] and key) else None
+
+        if pm and packs["enabled"] and key:
+            new_name = pm.get_character_name(key)
+        else:
+            new_name = self.pers_name.text().strip() or self._manual_name
+            self.pers_name.setText(new_name)
+
+        self._sync_pack_name_field()
+        old_name = pers.get("name", "Tomo")
+        pers["name"] = new_name
+        if new_name != old_name:
+            self.character_changed.emit(new_name)
 
         engine = getattr(self, "proactive_engine", None)
         if engine and hasattr(engine, "pack_manager"):
-            pm = engine.pack_manager
-            pm.scan_packs()
+            engine.pack_manager.scan_packs()
             if packs["enabled"] and packs["active_pack"]:
-                pm.set_active_pack(packs["active_pack"])
+                engine.pack_manager.set_active_pack(packs["active_pack"])
             else:
-                pm.set_active_pack(None)
+                engine.pack_manager.set_active_pack(None)
 
     def _save_mind(self):
         llm = self.config.setdefault("llm", {})

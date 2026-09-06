@@ -165,6 +165,17 @@ class TestMainWindow:
         window._update_status_message()
         assert window.mood_label.text() != ""
 
+    def test_apply_character_name_updates_title_and_menu(
+        self, qtbot, mock_memory_manager, mock_config, mock_i18n
+    ):
+        from src.gui.windows.main_window import MainWindow
+        window = MainWindow(config=mock_config, memory_manager=mock_memory_manager, i18n=mock_i18n)
+        qtbot.addWidget(window)
+        window._apply_character_name("Lin")
+        assert window.windowTitle() == "app.title"
+        assert window._char_menu.title() == "Lin"
+        assert mock_config["personality"]["name"] == "Lin"
+
     @patch("PySide6.QtWidgets.QMessageBox.about")
     def test_about_dialog(self, mock_about, qtbot, mock_memory_manager, mock_config, mock_i18n):
         from src import __version__
