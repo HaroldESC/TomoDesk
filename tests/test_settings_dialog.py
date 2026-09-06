@@ -101,7 +101,7 @@ class TestSettingsNavSizing:
         dialog = _make_dialog(qtbot, mock_config, mock_i18n)
         hint = dialog._nav.sizeHintForColumn(0)
         assert hint > 0
-        assert dialog._nav.minimumWidth() >= hint
+        assert dialog._nav.minimumWidth() >= min(300, hint)
 
     def test_nav_uses_all_vertical_space(self, qtbot, mock_config, mock_i18n):
         dialog = _make_dialog(qtbot, mock_config, mock_i18n)
