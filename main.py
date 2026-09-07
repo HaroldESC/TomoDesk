@@ -5,6 +5,7 @@ import sys
 import threading
 import logging
 import argparse
+from pathlib import Path
 
 os.environ["QT_LOGGING_RULES"] = "qt.qpa.window=false"
 
@@ -295,6 +296,8 @@ def run_gui(config):
 
     app = QApplication(sys.argv)
     icon_path = paths.resource_dir() / "tomodesk.png"
+    if not icon_path.exists():
+        icon_path = Path(__file__).parent / "build" / "assets" / "tomodesk.png"
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))
 
