@@ -1,7 +1,27 @@
 import yaml
 import pytest
 
-from src.config.config import load_config, save_config, validate_llm_endpoint
+from src.config.config import (
+    is_setup_completed,
+    load_config,
+    save_config,
+    validate_llm_endpoint,
+)
+
+
+class TestIsSetupCompleted:
+    def test_false_when_missing(self):
+        assert is_setup_completed({}) is False
+
+    def test_false_when_not_dict(self):
+        assert is_setup_completed({"setup": "yes"}) is False
+
+    def test_true_when_completed(self):
+        assert is_setup_completed({"setup": {"completed": True}}) is True
+
+    def test_false_when_explicit_false(self):
+        assert is_setup_completed({"setup": {"completed": False}}) is False
+
 
 
 class TestValidateLlmEndpoint:
@@ -74,6 +94,8 @@ class TestLoadConfig:
         assert loaded["memory"]["embedding_model"] == "all-MiniLM-L6-v2"
         assert loaded["llm"]["provider"] == "ollama"
         assert loaded["llm"]["endpoint"] == "http://localhost:11434"
+        # Config preexistente sin seccion `setup`: se marca como ya configurada.
+        assert loaded["setup"]["completed"] is True
 
     def test_load_config_fills_llama_cpp_defaults(self, tmp_path):
         config = {
@@ -172,6 +194,8 @@ class TestLoadConfig:
         loaded = load_config(target)
         assert target.exists()
         assert loaded["llm"]["model"] == "qwen"
+        # Instalacion nueva: el asistente de primera ejecucion debe mostrarse.
+        assert loaded["setup"]["completed"] is False
 
     def test_load_config_missing_config_and_example_raises(self, tmp_path, monkeypatch):
         target = tmp_path / "config.yaml"

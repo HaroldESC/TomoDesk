@@ -146,3 +146,38 @@ def test_download_model_fetches_when_missing(tmp_path, mocker):
     result = download.download_model(config)
     assert result == model
     assert model.read_bytes() == data
+
+
+def test_download_file_should_cancel_removes_part(tmp_path, mocker):
+    data = b"x" * 100
+    resp = _FakeResp([data], len(data))
+    mocker.patch.object(download.urllib.request, "urlopen", return_value=resp)
+
+    dest = tmp_path / "model.gguf"
+    with pytest.raises(download.DownloadCancelled):
+        download.download_file(
+            "https://example.com/model.gguf", dest, should_cancel=lambda: True
+        )
+    assert not dest.exists()
+    assert not (tmp_path / "model.gguf.part").exists()
+
+
+def test_download_model_forwards_should_cancel(tmp_path, mocker):
+    resp = _FakeResp([b"data"], 4)
+    mocker.patch.object(download.urllib.request, "urlopen", return_value=resp)
+    config = {"llm": {"llama_cpp": {"model_path": str(tmp_path / "m.gguf")}}}
+    with pytest.raises(download.DownloadCancelled):
+        download.download_model(config, should_cancel=lambda: True)
+
+
+def test_remote_content_length_reads_header(mocker):
+    resp = _FakeResp([], 1234)
+    mocker.patch.object(download.urllib.request, "urlopen", return_value=resp)
+    assert download.remote_content_length("https://example.com/m.gguf") == 1234
+
+
+def test_remote_content_length_returns_minus_one_on_error(mocker):
+    mocker.patch.object(
+        download.urllib.request, "urlopen", side_effect=OSError("no net")
+    )
+    assert download.remote_content_length("https://example.com/m.gguf") == -1

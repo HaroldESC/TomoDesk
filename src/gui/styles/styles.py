@@ -290,6 +290,10 @@ QLabel#heading {{
     font-weight: 700;
     color: {c["text_primary"]};
 }}
+QLabel#error {{
+    color: {c["danger"]};
+    font-size: 12px;
+}}
 
 /* ── List widgets ─────────────────────────────────────────────────── */
 QListWidget {{

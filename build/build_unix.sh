@@ -2,7 +2,12 @@
 # Build de TomoDesk para Linux: PyInstaller (one-folder) + appimagetool (AppImage).
 #
 # Uso:
-#   bash build/build_unix.sh
+#   bash build/build_unix.sh [--full]
+#
+#   --full  instala llama-cpp-python (requirements-llama.txt) antes de empaquetar,
+#           generando el asset "full" con el runtime de IA local embebido. El
+#           modelo GGUF NO se bundlea (licencia): se descarga con el asistente de
+#           primera ejecucion o desde Ajustes.
 #
 # Requisitos:
 #   - Python 3.12 + las deps Qt del sistema (libegl1, libgl1, libxkbcommon0,
@@ -15,6 +20,14 @@
 #   dist/TomoDesk-<version>-x86_64.AppImage
 
 set -euo pipefail
+
+FULL=0
+for arg in "$@"; do
+    case "$arg" in
+        --full) FULL=1 ;;
+        *) echo "Argumento desconocido: $arg" >&2; exit 2 ;;
+    esac
+done
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
@@ -39,6 +52,12 @@ echo "== Build Linux: TomoDesk $VERSION =="
 
 # 1. Dependencia de build (PyInstaller)
 "$PY" -m pip install -q -r build/requirements-build.txt
+
+# 1b. Runtime local opcional (asset "full")
+if [ "$FULL" -eq 1 ]; then
+    echo "Instalando llama-cpp-python (build full)..."
+    "$PY" -m pip install -q -r requirements-llama.txt
+fi
 
 # 2. Icono
 "$PY" build/generate_icon.py

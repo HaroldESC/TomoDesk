@@ -1,7 +1,12 @@
 # Build de TomoDesk para Windows: PyInstaller (one-folder) + Inno Setup (.exe).
 #
 # Uso:
-#   powershell -ExecutionPolicy Bypass -File build\build_windows.ps1
+#   powershell -ExecutionPolicy Bypass -File build\build_windows.ps1 [-Full]
+#
+#   -Full  instala llama-cpp-python (requirements-llama.txt) antes de empaquetar,
+#          generando el asset "full" con el runtime de IA local embebido. El
+#          modelo GGUF NO se bundlea (licencia): se descarga con el asistente de
+#          primera ejecucion o desde Ajustes.
 #
 # Requisitos:
 #   - Python 3.12 con venv\ activado o creado (se auto-detecta venv\).
@@ -12,6 +17,10 @@
 # Artefactos:
 #   dist\TomoDesk\                    one-folder de PyInstaller
 #   dist\TomoDesk-Setup-<version>.exe instalador de Inno Setup
+
+param(
+    [switch]$Full
+)
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
@@ -63,6 +72,13 @@ Write-Host "== Build Windows: TomoDesk $Version =="
 # 1. Dependencia de build (PyInstaller)
 & $Py -m pip install -q -r build/requirements-build.txt
 if ($LASTEXITCODE -ne 0) { throw "Fallo al instalar build deps" }
+
+# 1b. Runtime local opcional (asset "full")
+if ($Full) {
+    Write-Host "Instalando llama-cpp-python (build full)..."
+    & $Py -m pip install -q -r requirements-llama.txt
+    if ($LASTEXITCODE -ne 0) { throw "Fallo al instalar llama-cpp-python" }
+}
 
 # 2. Icono + version info
 & $Py build/generate_icon.py

@@ -316,6 +316,18 @@ def run_gui(config):
         engine = deps["engine"]
         i18n = deps["i18n"]
 
+        from src.config.config import is_setup_completed
+        if not is_setup_completed(config):
+            from PySide6.QtWidgets import QDialog
+            from PySide6.QtCore import QCoreApplication
+            from src.gui.windows.setup_wizard import SetupWizard
+            wizard = SetupWizard(config, i18n=i18n)
+            accepted = wizard.exec() == QDialog.Accepted
+            if accepted and wizard.requires_restart():
+                _restart_pending = True
+                QCoreApplication.quit()
+                return
+
         overlay_ref = {"overlay": None}
 
         def on_proactive_comment(comment: str, trigger_type: str):

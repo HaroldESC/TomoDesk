@@ -52,10 +52,16 @@ for pkg in ("tokenizers",):
 # src/llm/llama_cpp.py (from llama_cpp import Llama), que modulegraph no ve.
 # Solo se bundlea si llama-cpp-python esta instalada en el entorno de build
 # (requirement requirements-llama.txt); los builds "estandar" no crecen.
+# Para generar el asset "full" instala primero esa dependencia, p.ej. con
+# `build\build_windows.ps1 -Full` o `bash build/build_unix.sh --full`.
 try:
     d, b, h = collect_all("llama_cpp")
+    print("[TomoDesk] llama-cpp-python detectado: se incluye el runtime local "
+          "(%d binarios, %d datos)" % (len(b), len(d)))
 except Exception:
     d = b = h = []
+    print("[TomoDesk] llama-cpp-python NO instalado: build estandar "
+          "(sin runtime local). Usa -Full / --full para incluirlo.")
 datas += d
 binaries += b
 hiddenimports += h + ["llama_cpp"]

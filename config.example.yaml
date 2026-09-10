@@ -49,6 +49,8 @@ personality_packs:
 privacy:
   consent_asked: false
   monitor_active_window: true
+setup:
+  completed: false # true tras completar (o omitir) el asistente de primera ejecucion
 ui:
   bubble_fade_delay_ms: 4000
   bubble_max_lines: 5

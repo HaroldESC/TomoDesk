@@ -24,6 +24,11 @@ from src.config import paths
 
 logger = logging.getLogger(__name__)
 
+
+class DownloadCancelled(Exception):
+    """El usuario cancelo una descarga en curso."""
+
+
 # (repo, filename) del GGUF Q4_K_M de llama3.2:1b (~800MB). Se hostea en
 # HuggingFace y NO se sube a Git (licencia de Comunidad Llama). Espejo publico:
 # el repo ggml-org es gated (HTTP 401) sin autenticacion.
@@ -68,6 +73,24 @@ def model_exists(config: dict) -> bool:
     return model_path_from_config(config).exists()
 
 
+def remote_content_length(url: str, *, timeout: int = 15) -> int:
+    """Tamano en bytes del recurso remoto, o -1 si no se puede determinar.
+
+    Usa una peticion HEAD ligera (HuggingFace la soporta y resuelve el
+    redirect de LFS). Cualquier fallo de red devuelve -1 en lugar de lanzar,
+    ya que solo alimenta la etiqueta informativa del asistente.
+    """
+    req = urllib.request.Request(
+        url, method="HEAD", headers={"User-Agent": "TomoDesk/1.0"}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return int(resp.headers.get("Content-Length") or -1)
+    except Exception as exc:
+        logger.debug("No se pudo obtener Content-Length de %s: %s", url, exc)
+        return -1
+
+
 def _raise_friendly_http_error(exc: HTTPError) -> None:
     """Convierte un HTTPError de la descarga en un ValueError explicativo."""
     if exc.code in (401, 403):
@@ -90,12 +113,15 @@ def download_file(
     chunk_size: int = 1024 * 1024,
     *,
     timeout: int = 30,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> Path:
     """Descarga ``url`` a ``dest`` con callback de progreso (bytes, total).
 
     Total es -1 si el servidor no reporta Content-Length.
     ``timeout`` es el timeout de conexion/lectura a nivel de socket en
-    segundos de cada operacion de ``urlopen``.
+    segundos de cada operacion de ``urlopen``. ``should_cancel`` se consulta
+    antes de cada chunk; si devuelve ``True`` se aborta con
+    :class:`DownloadCancelled` y se borra el archivo ``.part``.
     """
     dest.parent.mkdir(parents=True, exist_ok=True)
     part = dest.with_suffix(dest.suffix + ".part")
@@ -104,17 +130,24 @@ def download_file(
         resp = urllib.request.urlopen(req, timeout=timeout)
     except HTTPError as exc:
         _raise_friendly_http_error(exc)
-    with resp, open(part, "wb") as f:
-        total = int(resp.headers.get("Content-Length") or -1)
-        downloaded = 0
-        while True:
-            chunk = resp.read(chunk_size)
-            if not chunk:
-                break
-            f.write(chunk)
-            downloaded += len(chunk)
-            if progress:
-                progress(downloaded, total)
+    try:
+        with resp, open(part, "wb") as f:
+            total = int(resp.headers.get("Content-Length") or -1)
+            downloaded = 0
+            while True:
+                if should_cancel is not None and should_cancel():
+                    raise DownloadCancelled()
+                chunk = resp.read(chunk_size)
+                if not chunk:
+                    break
+                f.write(chunk)
+                downloaded += len(chunk)
+                if progress:
+                    progress(downloaded, total)
+    except DownloadCancelled:
+        part.unlink(missing_ok=True)
+        logger.info("Descarga de %s cancelada por el usuario", dest)
+        raise
     part.replace(dest)
     logger.info("Modelo descargado en %s (%s bytes)", dest, downloaded)
     return dest
@@ -123,6 +156,7 @@ def download_file(
 def download_model(
     config: dict,
     progress: Callable[[int, int], None] | None = None,
+    should_cancel: Callable[[], bool] | None = None,
 ) -> Path:
     """Descarga el GGUF configurado a su ruta destino."""
     url = model_url_from_config(config)
@@ -131,4 +165,4 @@ def download_model(
         logger.info("El modelo ya existe en %s", dest)
         return dest
     logger.info("Descargando modelo desde %s", url)
-    return download_file(url, dest, progress)
+    return download_file(url, dest, progress, should_cancel=should_cancel)

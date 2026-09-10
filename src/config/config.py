@@ -55,6 +55,9 @@ _NESTED_DEFAULTS: dict[str, dict] = {
     "context": {
         "directory": "data/context_packs",
     },
+    "setup": {
+        "completed": False,
+    },
 }
 
 
@@ -102,6 +105,14 @@ def _strip_sensitive(config: dict) -> dict:
     return safe
 
 
+def is_setup_completed(config: dict) -> bool:
+    """True si el wizard de primera ejecucion ya se completo (o se omitio)."""
+    setup = config.get("setup")
+    if not isinstance(setup, dict):
+        return False
+    return bool(setup.get("completed", False))
+
+
 def validate_llm_endpoint(url: str) -> bool:
     """Return True if `url` is an http(s) endpoint with a non-empty host."""
     if not url:
@@ -140,6 +151,7 @@ def load_config(config_path: Path | None = None) -> dict:
     if config_path is None:
         config_path = default_config_path()
 
+    bootstrapped = False
     if not config_path.exists():
         example = config_path.with_name("config.example.yaml")
         if not example.exists():
@@ -148,6 +160,7 @@ def load_config(config_path: Path | None = None) -> dict:
             config_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(example, config_path)
             secure_file(config_path)
+            bootstrapped = True
             logger.info(
                 "config.yaml not found; bootstrapped from %s", example
             )
@@ -162,10 +175,18 @@ def load_config(config_path: Path | None = None) -> dict:
         config = yaml.safe_load(f) or {}
     secure_file(config_path)
 
+    had_setup = isinstance(config.get("setup"), dict)
     _apply_nested_defaults(config)
     _CONFIG_PATH = config_path.resolve()
 
-    if _migrate_llama_cpp_default(config):
+    # Migracion: una config preexistente (pre-1.4.0) sin seccion `setup` ya fue
+    # configurada a mano; no volver a mostrar el asistente de primera ejecucion.
+    migrated_setup = False
+    if not bootstrapped and not had_setup:
+        config["setup"]["completed"] = True
+        migrated_setup = True
+
+    if _migrate_llama_cpp_default(config) or migrated_setup:
         save_config(config, _CONFIG_PATH)
 
     creds = CredentialManager()
