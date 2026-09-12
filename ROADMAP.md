@@ -1,5 +1,11 @@
 # Roadmap
 
+## Released: v1.4.1
+
+- Fix `RuntimeError` when closing the setup wizard after a background worker
+  finished, and stop logging missing-placeholder errors for wizard
+  translations. See `CHANGELOG.md` for details.
+
 ## Released: v1.0.0
 
 - Conversational AI with local LLMs (Ollama / OpenAI-compatible: LM Studio, vLLM, Jan)
