@@ -47,6 +47,29 @@ class TestFormatSize:
         assert format_size(None) == ""
 
 
+class TestTranslateHelper:
+    def test_forwards_kwargs_to_i18n(self, qapp, mocker):
+        i18n = mocker.MagicMock()
+        i18n.t.return_value = "Approximate size: 3 GB"
+        wizard = SetupWizard(_config(), i18n=i18n)
+        try:
+            text = wizard._t("setup.local_size", "fallback", size="3 GB")
+            assert text == "Approximate size: 3 GB"
+            i18n.t.assert_any_call("setup.local_size", size="3 GB")
+        finally:
+            wizard.close()
+
+    def test_formats_fallback_when_key_missing(self, qapp, mock_i18n):
+        wizard = SetupWizard(_config(), i18n=mock_i18n)
+        try:
+            text = wizard._t(
+                "setup.local_size", "Approximate size: {size}", size="3 GB"
+            )
+            assert text == "Approximate size: 3 GB"
+        finally:
+            wizard.close()
+
+
 class TestNavigation:
     def test_is_dialog(self, qapp, mock_i18n):
         wizard = SetupWizard(_config(), i18n=mock_i18n)

@@ -130,12 +130,12 @@ class SetupWizard(QDialog):
 
     # ── i18n ─────────────────────────────────────────────────────────────────
 
-    def _t(self, key: str, fallback: str) -> str:
+    def _t(self, key: str, fallback: str, **kwargs) -> str:
         if self.i18n is not None:
-            text = self.i18n.t(key)
+            text = self.i18n.t(key, **kwargs)
             if text != key:
                 return text
-        return fallback
+        return fallback.format(**kwargs) if kwargs else fallback
 
     # ── pages ────────────────────────────────────────────────────────────────
 
@@ -224,13 +224,14 @@ class SetupWizard(QDialog):
         self._model_label = QLabel(self._t(
             "setup.local_model",
             "Recommended model: {model}",
-        ).format(model=self._model_file))
+            model=self._model_file,
+        ))
         self._model_label.setWordWrap(True)
         layout.addWidget(self._model_label)
 
         self._size_label = QLabel(self._t(
-            "setup.local_size", "Approximate size: {size}"
-        ).format(size="..."))
+            "setup.local_size", "Approximate size: {size}", size="..."
+        ))
         self._size_label.setObjectName("secondary")
         layout.addWidget(self._size_label)
 
@@ -444,8 +445,8 @@ class SetupWizard(QDialog):
         if not label:
             label = self._t("setup.local_size_unknown", "unknown")
         self._size_label.setText(self._t(
-            "setup.local_size", "Approximate size: {size}"
-        ).format(size=label))
+            "setup.local_size", "Approximate size: {size}", size=label
+        ))
 
     # ── download ─────────────────────────────────────────────────────────────
 
@@ -480,8 +481,10 @@ class SetupWizard(QDialog):
             self._progress.setRange(0, 100)
             self._progress.setValue(percent)
             self._status_label.setText(self._t(
-                "setup.downloading_percent", "Downloading model... {percent}%"
-            ).format(percent=percent))
+                "setup.downloading_percent",
+                "Downloading model... {percent}%",
+                percent=percent,
+            ))
         else:
             self._progress.setRange(0, 0)
             self._status_label.setText(self._t(
@@ -509,8 +512,10 @@ class SetupWizard(QDialog):
             return
         logger.error("Descarga del modelo fallida: %s", error)
         self._status_label.setText(self._t(
-            "setup.download_error", "Download failed: {error}"
-        ).format(error=error))
+            "setup.download_error",
+            "Download failed: {error}",
+            error=error,
+        ))
 
     def _on_cancel(self) -> None:
         if self._download_worker is not None and self._download_worker.isRunning():
