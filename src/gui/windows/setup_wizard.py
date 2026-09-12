@@ -434,7 +434,7 @@ class SetupWizard(QDialog):
         worker = _SizeWorker(self._model_url, parent=self)
         self._size_worker = worker
         worker.size_ready.connect(self._on_size_ready)
-        worker.finished.connect(worker.deleteLater)
+        worker.finished.connect(lambda: setattr(self, "_size_worker", None))
         worker.start()
 
     def _on_size_ready(self, size: int) -> None:
@@ -469,7 +469,7 @@ class SetupWizard(QDialog):
         worker.progress.connect(self._on_download_progress)
         worker.done.connect(self._on_download_done)
         worker.error.connect(self._on_download_error)
-        worker.finished.connect(worker.deleteLater)
+        worker.finished.connect(lambda: setattr(self, "_download_worker", None))
         worker.start()
 
     def _on_download_progress(self, done: int, total: int) -> None:
