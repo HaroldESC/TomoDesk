@@ -1,5 +1,18 @@
 # Roadmap
 
+## Released: v1.5.0
+
+- Window-sitting overhaul: four target modes (`active_window`, `mouse_window`,
+  `closest_window`, `fixed_spot`), HWND-based own-window exclusion, shell-noise
+  filtering, per-screen clamping for offset multi-monitor layouts and fallback
+  anchored to the target's screen.
+- Window-sitting settings (target, fallback, transition speed, max/min
+  behavior) apply live without restarting, with new Settings controls and
+  EN/ES strings.
+- Focus and Do Not Disturb now suspend window-sitting (inverted DND checkbox
+  fixed).
+- Single-instance guard so two GUIs cannot share SQLite, logs and config.
+
 ## Released: v1.4.1
 
 - Fix `RuntimeError` when closing the setup wizard after a background worker
