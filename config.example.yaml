@@ -75,11 +75,14 @@ ui:
   theme: dark
 window_sitting:
   enabled: true
-  fallback_position: bottom-right
-  maximized_behavior: 1
-  minimized_behavior: 0
+  # active_window | mouse_window | closest_window | fixed_spot (legacy: desktop)
   target: active_window
   transition_speed: 0.5
+  # bottom-right | bottom-left | top-right | top-left
+  fallback_position: bottom-right
+  # 0 = ignore that window (use fallback), 1 = adjust (clamp edge / taskbar)
+  maximized_behavior: 1
+  minimized_behavior: 0
 context:
   directory: data/context_packs
   active_packs:

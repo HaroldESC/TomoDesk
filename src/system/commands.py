@@ -18,6 +18,7 @@ def handle_command(
     proactive_engine=None,
     state_manager=None,
     i18n=None,
+    overlay=None,
 ) -> Tuple[Optional[str], bool]:
     parts = cmd.split(maxsplit=1)
     command = parts[0].lower()
@@ -43,7 +44,7 @@ def handle_command(
 
     handler = handlers.get(command)
     if handler:
-        return handler(args, memory_manager=memory_manager, config=config, event_monitor=event_monitor, context_builder=context_builder, proactive_engine=proactive_engine, state_manager=state_manager, i18n=i18n)
+        return handler(args, memory_manager=memory_manager, config=config, event_monitor=event_monitor, context_builder=context_builder, proactive_engine=proactive_engine, state_manager=state_manager, i18n=i18n, overlay=overlay)
     else:
         return (i18n.t("commands.unknown_command"), True)
 
@@ -361,6 +362,7 @@ def cmd_proactive(
     args, memory_manager, config, proactive_engine=None, **kwargs
 ) -> Tuple[Optional[str], bool]:
     i18n = kwargs.get('i18n')
+    overlay = kwargs.get('overlay')
     engine = proactive_engine
     if engine is None:
         return (i18n.t("commands.proactive_unavailable"), True)
@@ -370,19 +372,39 @@ def cmd_proactive(
 
     if subcommand == "on":
         engine.policy.set_dnd_mode(False)
+        _sync_sitting(overlay, engine)
         return (i18n.t("commands.proactive_on"), True)
     elif subcommand == "off":
         engine.policy.set_dnd_mode(True)
+        _sync_sitting(overlay, engine)
         return (i18n.t("commands.proactive_off"), True)
     elif subcommand == "focus":
         engine.policy.set_focus_mode(True)
+        _sync_sitting(overlay, engine)
         return (i18n.t("commands.focus_on"), True)
     elif subcommand == "unfocus":
         engine.policy.set_focus_mode(False)
+        _sync_sitting(overlay, engine)
         return (i18n.t("commands.focus_off"), True)
     else:
         stats = engine.get_stats()
         return (format_proactive_status(stats, i18n), True)
+
+
+def _sync_sitting(overlay, engine) -> None:
+    """Mirror focus/DND state onto the overlay's window-sitting controller."""
+    if overlay is None or engine is None:
+        return
+    policy = getattr(engine, "policy", None)
+    if policy is None:
+        return
+    suppress = bool(
+        getattr(policy, "_focus_mode", False)
+        or getattr(policy, "_dnd_mode", False)
+    )
+    setter = getattr(overlay, "set_focus_mode", None)
+    if callable(setter):
+        setter(suppress)
 
 
 def format_proactive_status(stats: Dict, i18n=None) -> str:

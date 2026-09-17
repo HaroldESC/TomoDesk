@@ -27,6 +27,7 @@ from src.config.paths import (
     user_resolve,
 )
 from src.context.context_pack import ContextPackManager
+from src.gui.managers.window_sitting import FALLBACK_POSITIONS, TARGET_MODES
 from src.gui.sprites.sprite_loader import SpriteLoader
 from src.gui.styles.styles import get_style_set
 from src.personality.personality_pack import packs_root
@@ -917,6 +918,15 @@ class SettingsDialog(QDialog):
         self._add_group(layout, "dialogs.settings.advanced_about", self._build_advanced_about)
         layout.addStretch()
 
+    @staticmethod
+    def _select_combo_data(combo, value):
+        """Select the item whose userData matches value (legacy-aware)."""
+        index = combo.findData(value)
+        if index < 0 and value == "desktop":
+            index = combo.findData("fixed_spot")
+        if index >= 0:
+            combo.setCurrentIndex(index)
+
     def _build_advanced_sitting(self, layout):
         ws = self.config.get("window_sitting", {})
 
@@ -924,9 +934,18 @@ class SettingsDialog(QDialog):
         self.ws_enabled.setChecked(ws.get("enabled", True))
         layout.addWidget(self.ws_enabled)
 
+        target_labels = {
+            "active_window": "ws_target_active",
+            "mouse_window": "ws_target_mouse",
+            "closest_window": "ws_target_closest",
+            "fixed_spot": "ws_target_fixed",
+        }
         self.ws_target = QComboBox()
-        self.ws_target.addItems(["active_window", "desktop"])
-        self.ws_target.setCurrentText(ws.get("target", "active_window"))
+        for mode in TARGET_MODES:
+            self.ws_target.addItem(
+                self.i18n.t(f"dialogs.settings.{target_labels[mode]}"), mode
+            )
+        self._select_combo_data(self.ws_target, ws.get("target", "active_window"))
         self._add_row(layout, self.i18n.t("dialogs.settings.ws_target"), self.ws_target)
 
         self.ws_transition = self._labeled_slider(
@@ -935,10 +954,28 @@ class SettingsDialog(QDialog):
         )
 
         self.ws_fallback = QComboBox()
-        self.ws_fallback.addItems(["bottom-right", "bottom-left", "top-right", "top-left"])
-        self.ws_fallback.setCurrentText(ws.get("fallback_position", "bottom-right"))
+        for position in FALLBACK_POSITIONS:
+            key = "ws_fallback_" + position.replace("-", "_")
+            self.ws_fallback.addItem(
+                self.i18n.t(f"dialogs.settings.{key}"), position
+            )
+        self._select_combo_data(
+            self.ws_fallback, ws.get("fallback_position", "bottom-right")
+        )
         self._add_row(layout, self.i18n.t("dialogs.settings.ws_fallback_position"),
                       self.ws_fallback)
+
+        self.ws_maximized = QComboBox()
+        self.ws_minimized = QComboBox()
+        for combo in (self.ws_maximized, self.ws_minimized):
+            combo.addItem(self.i18n.t("dialogs.settings.ws_behavior_ignore"), 0)
+            combo.addItem(self.i18n.t("dialogs.settings.ws_behavior_adjust"), 1)
+        self._select_combo_data(self.ws_maximized, ws.get("maximized_behavior", 1))
+        self._select_combo_data(self.ws_minimized, ws.get("minimized_behavior", 0))
+        self._add_row(layout, self.i18n.t("dialogs.settings.ws_maximized_behavior"),
+                      self.ws_maximized)
+        self._add_row(layout, self.i18n.t("dialogs.settings.ws_minimized_behavior"),
+                      self.ws_minimized)
 
     def _build_advanced_database(self, layout):
         db = self.config.get("database", {})
@@ -1527,22 +1564,37 @@ class SettingsDialog(QDialog):
         engine = getattr(self, "proactive_engine", None)
         if engine and hasattr(engine, "policy"):
             engine.policy.set_focus_mode(self.behavior_focus_cb.isChecked())
-            dnd = not self.behavior_dnd_cb.isChecked()
-            engine.policy.set_dnd_mode(dnd)
+            engine.policy.set_dnd_mode(self.behavior_dnd_cb.isChecked())
+        self._sync_parent_sitting()
 
         privacy = self.config.setdefault("privacy", {})
         privacy["monitor_active_window"] = self.privacy_monitor_cb.isChecked()
 
+    def _sync_parent_sitting(self):
+        """Ask the parent window to re-evaluate focus/DND sitting suspension."""
+        sync = getattr(self.parent(), "_sync_sitting_suppression", None)
+        if callable(sync):
+            sync()
+
     def _save_advanced(self):
         ws = self.config.setdefault("window_sitting", {})
         ws["enabled"] = self.ws_enabled.isChecked()
-        ws["target"] = self.ws_target.currentText()
+        ws["target"] = self.ws_target.currentData()
         ws["transition_speed"] = self.ws_transition.value() / 20.0
-        ws["fallback_position"] = self.ws_fallback.currentText()
+        ws["fallback_position"] = self.ws_fallback.currentData()
+        ws["maximized_behavior"] = int(self.ws_maximized.currentData())
+        ws["minimized_behavior"] = int(self.ws_minimized.currentData())
+        self._push_sitting_config(ws)
 
         logs = self.config.setdefault("logs", {})
         logs["level"] = self.log_level.currentText()
         logs["debug_prompts"] = self.debug_prompts.isChecked()
+
+    def _push_sitting_config(self, ws):
+        """Apply window_sitting changes to the live controller immediately."""
+        overlay = getattr(self.parent(), "overlay", None)
+        if overlay is not None and hasattr(overlay, "apply_sitting_config"):
+            overlay.apply_sitting_config(ws)
 
     def _save_context(self):
         context = self.config.setdefault("context", {})

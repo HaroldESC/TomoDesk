@@ -58,6 +58,14 @@ _NESTED_DEFAULTS: dict[str, dict] = {
     "setup": {
         "completed": False,
     },
+    "window_sitting": {
+        "enabled": True,
+        "target": "active_window",
+        "transition_speed": 0.5,
+        "fallback_position": "bottom-right",
+        "maximized_behavior": 1,
+        "minimized_behavior": 0,
+    },
 }
 
 

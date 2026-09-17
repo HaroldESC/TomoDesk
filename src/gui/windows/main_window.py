@@ -257,6 +257,7 @@ class MainWindow(QMainWindow):
                 self.proactive_engine,
                 self.state_manager,
                 i18n=self.i18n,
+                overlay=self.overlay,
             )
             if msg:
                 self.add_assistant_message(msg)
@@ -272,7 +273,7 @@ class MainWindow(QMainWindow):
                 cmd, self.memory_manager, self.config,
                 self.event_monitor, self.context_builder,
                 self.proactive_engine, self.state_manager,
-                i18n=self.i18n,
+                i18n=self.i18n, overlay=self.overlay,
             )
             if msg:
                 self.add_assistant_message(msg)
@@ -352,14 +353,10 @@ class MainWindow(QMainWindow):
         dialog.show()
 
     def _on_settings_closed(self, dialog):
-        if self.proactive_engine:
-            modes = self.config.get("modes", {})
-            self.proactive_engine.policy.set_dnd_mode(
-                not modes.get("proactive_comments", False)
-            )
         if hasattr(self, '_settings_dialog') and self._settings_dialog is dialog:
             self._settings_dialog = None
         self._apply_character_name()
+        self._sync_sitting_suppression()
 
     def _apply_character_name(self, name=None):
         name = name or self.config.get("personality", {}).get("name", "Tomo")
@@ -392,7 +389,19 @@ class MainWindow(QMainWindow):
     def _toggle_focus(self, checked: bool):
         if self.proactive_engine:
             self.proactive_engine.policy.set_focus_mode(checked)
+        self._sync_sitting_suppression()
         self._update_status_message()
+
+    def _sync_sitting_suppression(self):
+        """Suspend sitting while focus or DND mode is active."""
+        if not self.overlay:
+            return
+        policy = getattr(self.proactive_engine, "policy", None)
+        suppress = bool(
+            policy and (getattr(policy, "_focus_mode", False)
+                        or getattr(policy, "_dnd_mode", False))
+        )
+        self.overlay.set_focus_mode(suppress)
 
     def _show_interaction_guide(self):
         msg = (

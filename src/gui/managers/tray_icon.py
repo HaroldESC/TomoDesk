@@ -148,6 +148,10 @@ class TrayIcon(QSystemTrayIcon):
         engine = getattr(self.main_window, "proactive_engine", None)
         if engine:
             engine.policy.set_focus_mode(checked)
+        if hasattr(self.main_window, "_sync_sitting_suppression"):
+            self.main_window._sync_sitting_suppression()
+        elif self.overlay:
+            self.overlay.set_focus_mode(checked)
         if hasattr(self.main_window, "_update_status_message"):
             self.main_window._update_status_message()
 

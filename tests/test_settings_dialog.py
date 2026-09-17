@@ -380,3 +380,59 @@ class TestCharacterPackNameSync:
         dialog._save_character()
         dialog._save_character()
         assert received == ["Lin"]
+
+
+class TestWindowSittingSettings:
+    def test_target_options_and_legacy_migration(
+        self, qtbot, mock_i18n, mock_config
+    ):
+        mock_config["window_sitting"] = {"target": "desktop"}
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        values = [
+            dialog.ws_target.itemData(i) for i in range(dialog.ws_target.count())
+        ]
+        assert values == [
+            "active_window", "mouse_window", "closest_window", "fixed_spot",
+        ]
+        assert dialog.ws_target.currentData() == "fixed_spot"
+
+    def test_save_advanced_persists_selection(self, qtbot, mock_i18n, mock_config):
+        mock_config["window_sitting"] = {}
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        dialog.ws_target.setCurrentIndex(dialog.ws_target.findData("mouse_window"))
+        dialog.ws_fallback.setCurrentIndex(dialog.ws_fallback.findData("top-left"))
+        dialog.ws_maximized.setCurrentIndex(dialog.ws_maximized.findData(0))
+        dialog.ws_minimized.setCurrentIndex(dialog.ws_minimized.findData(1))
+        dialog._save_advanced()
+        ws = mock_config["window_sitting"]
+        assert ws["target"] == "mouse_window"
+        assert ws["fallback_position"] == "top-left"
+        assert ws["maximized_behavior"] == 0
+        assert ws["minimized_behavior"] == 1
+
+    def test_save_advanced_pushes_to_overlay(self, qtbot, mock_i18n, mock_config):
+        from types import SimpleNamespace
+
+        mock_config["window_sitting"] = {}
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        overlay = MagicMock()
+        dialog.parent = lambda: SimpleNamespace(overlay=overlay)
+        dialog._save_advanced()
+        overlay.apply_sitting_config.assert_called_once()
+        pushed = overlay.apply_sitting_config.call_args[0][0]
+        assert pushed["target"] == dialog.ws_target.currentData()
+
+    def test_dnd_checkbox_not_inverted(self, qtbot, mock_i18n, mock_config):
+        from types import SimpleNamespace
+
+        policy = MagicMock()
+        policy._focus_mode = False
+        policy._dnd_mode = False
+        mock_config["window_sitting"] = {}
+        dialog = _make_dialog(
+            qtbot, mock_config, mock_i18n,
+            proactive_engine=SimpleNamespace(policy=policy),
+        )
+        dialog.behavior_dnd_cb.setChecked(True)
+        dialog._save_behavior()
+        policy.set_dnd_mode.assert_called_once_with(True)
