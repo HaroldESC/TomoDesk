@@ -86,15 +86,12 @@ class OverlayWindow(QWidget):
         self.sprite_manager.frame_timer.timeout.connect(_on_sprite_tick)
 
         self.wm = WindowManager()
-        self.sitting_ctrl = None
-        sitting_config = config.get("window_sitting", {})
-        if sitting_config.get("enabled", True):
-            self.sitting_ctrl = WindowSittingController(
-                self, self.sprite_manager, config, self.wm
-            )
+        self.sitting_ctrl = WindowSittingController(
+            self, self.sprite_manager, config, self.wm
+        )
         self.sitting_timer = QTimer(self)
         self.sitting_timer.timeout.connect(self._update_sitting)
-        self.sitting_timer.start(1000)
+        self.sitting_timer.start(500)
 
         bubble_style = config.get("ui", {}).get("bubble_style", "dark")
         max_lines = config.get("ui", {}).get("bubble_max_lines", 5)
@@ -267,6 +264,16 @@ class OverlayWindow(QWidget):
     def _update_sitting(self):
         if self.sitting_ctrl is not None:
             self.sitting_ctrl.update()
+
+    def set_focus_mode(self, active: bool):
+        """Suspend or resume window-sitting (focus / DND modes)."""
+        if self.sitting_ctrl is not None:
+            self.sitting_ctrl.set_focus_mode(active)
+
+    def apply_sitting_config(self, config: dict):
+        """Adopt window_sitting settings pushed from the Settings dialog."""
+        if self.sitting_ctrl is not None:
+            self.sitting_ctrl.apply_config(config)
 
     def set_animation_state(self, state: str):
         emotion = self.state_manager.get_state() if self.state_manager else None

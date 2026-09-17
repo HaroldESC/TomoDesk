@@ -82,6 +82,33 @@ def test_dragging(qapp, memory_manager, i18n):
     overlay.close()
 
 
+def test_set_focus_mode_propagates(qapp, memory_manager, i18n):
+    config = {
+        "personality": {"name": "Tomo"},
+        "ui": {"character_size": 150},
+        "window_sitting": {"enabled": True},
+    }
+    overlay = OverlayWindow(memory_manager, i18n, config)
+    assert overlay.sitting_ctrl is not None
+    overlay.set_focus_mode(True)
+    assert overlay.sitting_ctrl.enabled is False
+    overlay.set_focus_mode(False)
+    assert overlay.sitting_ctrl.enabled is True
+    overlay.close()
+
+
+def test_apply_sitting_config(qapp, memory_manager, i18n):
+    config = {
+        "personality": {"name": "Tomo"},
+        "ui": {"character_size": 150},
+        "window_sitting": {"enabled": True, "target": "active_window"},
+    }
+    overlay = OverlayWindow(memory_manager, i18n, config)
+    overlay.apply_sitting_config({"enabled": True, "target": "mouse_window"})
+    assert overlay.sitting_ctrl.target_mode == "mouse_window"
+    overlay.close()
+
+
 def test_double_click_signal(qapp, memory_manager, i18n, qtbot):
     config = {"personality": {"name": "Tomo"}, "ui": {"character_size": 150}}
     overlay = OverlayWindow(memory_manager, i18n, config)

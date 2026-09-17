@@ -19,16 +19,42 @@ except (ImportError, NotImplementedError):
 class WindowManager:
     """Abstracts window detection for sitting behavior."""
 
+    @staticmethod
+    def _hwnd(win) -> Optional[int]:
+        """Native window handle, usable to identify our own overlay."""
+        handle = getattr(win, "_hWnd", None)
+        if handle is None:
+            return None
+        try:
+            return int(getattr(handle, "value", handle))
+        except (TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _to_dict(win) -> Optional[Dict[str, Any]]:
+        """Normaliza una ventana de pygetwindow a un dict validado.
+
+        Devuelve ``None`` para ventanas invalidas o sin geometria usable.
+        """
+        try:
+            if not win or not win._rect or win.width <= 0 or win.height <= 0:
+                return None
+            return {
+                "title": win.title,
+                "bbox": (win.left, win.top, win.width, win.height),
+                "hwnd": WindowManager._hwnd(win),
+                "maximized": bool(getattr(win, "isMaximized", False)),
+                "minimized": bool(getattr(win, "isMinimized", False)),
+            }
+        except Exception as e:
+            logger.debug(f"_to_dict failed: {e}")
+            return None
+
     def get_active_window(self) -> Optional[Dict[str, Any]]:
         if not HAS_PYWINDOW:
             return None
         try:
-            win = gw.getActiveWindow()
-            if win and win._rect and win.width > 0 and win.height > 0:
-                return {
-                    "title": win.title,
-                    "bbox": (win.left, win.top, win.width, win.height),
-                }
+            return self._to_dict(gw.getActiveWindow())
         except Exception as e:
             logger.debug(f"get_active_window failed: {e}")
         return None
@@ -44,13 +70,10 @@ class WindowManager:
             return None
         try:
             x, y = self._get_cursor_pos()
-            wins = gw.getWindowsAt(x, y)
-            for win in wins:
-                if win._rect and win.width > 0 and win.height > 0:
-                    return {
-                        "title": win.title,
-                        "bbox": (win.left, win.top, win.width, win.height),
-                    }
+            for win in gw.getWindowsAt(x, y):
+                result = self._to_dict(win)
+                if result:
+                    return result
         except Exception as e:
             logger.debug(f"get_window_under_cursor failed: {e}")
         return None
@@ -60,9 +83,8 @@ class WindowManager:
             return []
         try:
             return [
-                {"title": w.title, "bbox": (w.left, w.top, w.width, w.height)}
-                for w in gw.getWindowsWithTitle("")
-                if w._rect and w.width > 0 and w.height > 0
+                d for d in (self._to_dict(w) for w in gw.getWindowsWithTitle(""))
+                if d
             ]
         except Exception as e:
             logger.debug(f"get_all_windows failed: {e}")
