@@ -290,6 +290,12 @@ class _InitWorker(QThread):
 
 
 def run_gui(config):
+    lock_path = _acquire_single_instance_lock()
+    if lock_path is None:
+        logger.warning("Another TomoDesk instance is already running; not starting a second one")
+        print("TomoDesk is already running.")
+        return
+
     from PySide6.QtWidgets import QApplication
     from PySide6.QtCore import QTimer
     from PySide6.QtGui import QIcon
@@ -478,6 +484,7 @@ def run_gui(config):
     app.setQuitOnLastWindowClosed(False)
     ret = app.exec()
     worker.wait(1000)
+    _release_single_instance_lock(lock_path)
     if _restart_pending:
         _restart_process()
     if deps_ref["deps"] is not None:
@@ -589,6 +596,72 @@ def _restart_process() -> None:
         subprocess.Popen(args, creationflags=flags)
     except Exception:
         logger.exception("Failed to launch restart process")
+
+
+_LOCK_FILE_NAME = "tomodesk.lock"
+
+
+def _lock_file_path() -> Path:
+    return paths.user_data_dir() / "data" / _LOCK_FILE_NAME
+
+
+def _lock_owner_pid(lock_path: Path) -> int:
+    try:
+        return int(lock_path.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return 0
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        import psutil
+        return psutil.pid_exists(pid)
+    except Exception:
+        return False
+
+
+def _acquire_single_instance_lock():
+    """Crea un lock exclusivo con el PID actual.
+
+    Devuelve la ruta del lock, o ``None`` si otra instancia viva lo posee.
+    Los locks huerfanos de procesos caidos se recuperan.
+    """
+    lock_path = _lock_file_path()
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return None
+    for _ in range(2):
+        try:
+            fd = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            pid = _lock_owner_pid(lock_path)
+            if pid and pid != os.getpid() and _pid_alive(pid):
+                return None
+            try:
+                lock_path.unlink()
+            except OSError:
+                return None
+            continue
+        except OSError:
+            return None
+        try:
+            os.write(fd, str(os.getpid()).encode("ascii"))
+        finally:
+            os.close(fd)
+        return lock_path
+    return None
+
+
+def _release_single_instance_lock(lock_path) -> None:
+    if lock_path is None:
+        return
+    if _lock_owner_pid(lock_path) != os.getpid():
+        return
+    try:
+        lock_path.unlink()
+    except OSError:
+        pass
 
 
 def main():

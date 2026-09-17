@@ -24,6 +24,9 @@ docs/
 # Logs
 data/*.log
 
+# Single-instance lock
+data/*.lock
+
 # Sprites (user-downloaded) — default pack ships with app
 data/sprites/*
 !data/sprites/default/
