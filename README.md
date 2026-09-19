@@ -32,9 +32,16 @@ TomoDesk is a desktop companion application that lives in your system tray and d
 - Emotional state system: happiness, energy, curiosity, closeness, connection
 - Notes, reminders, and semantic search
 - Animated 2D character overlay with speech bubbles
-- Audio-reactive dancing with beat detection
-- Window-sitting: character sits on real windows
-- Personality packs: load custom phrases from ZIP files
+- Audio-reactive dancing with beat detection (optional, requires sounddevice)
+- Window-sitting: character sits on real windows (4 modes: active, mouse, closest, fixed)
+- Context packs: app-aware sprite intent resolution
+- Personality packs: load custom phrases and sprites from ZIP or directory
+- Setup wizard: guided first-run configuration
+- Privacy consent: opt-in for active window monitoring
+- Credential manager: API keys stored in OS keyring (Windows Credential Manager, macOS Keychain)
+- Rate limiting for LLM API calls
+- ZIP validation and secure file permissions
+- Singleton instance guard (prevents running two GUIs)
 - System tray integration with context menu
 - Bilingual: English and Spanish
 
@@ -85,12 +92,19 @@ cp config.example.yaml config.yaml
 
 ### Configuration
 
-The default configuration lives in `config.yaml` (auto-generated from `config.example.yaml` on first run). Common settings include:
+The default configuration lives in `config.yaml` (auto-generated from `config.example.yaml` on first run). The full schema covers 15+ sections including:
 
-- LLM provider and model (Ollama, OpenAI-compatible local servers such as LM Studio, vLLM, or Jan, or embedded llama.cpp)
-- UI language (`auto`/`en`/`es`)
-- Overlay behavior, speech bubble style, audio-reactive dancing, and window-sitting
-- Personality packs and proactive comment resources
+- **LLM**: provider, model, endpoint, timeout, rate limiting, llama.cpp settings
+- **Memory**: short/mid/long-term toggles, ChromaDB path, episodic thresholds
+- **UI**: theme, language, overlay, speech bubble, sprite, hints, sleep
+- **Window-sitting**: 4 modes (active, mouse, closest, fixed), transition speed
+- **Personality**: name, traits, initial emotional values
+- **Personality packs**: directory, active pack
+- **Context packs**: directory, active packs
+- **Privacy**: consent, active window monitoring
+- **Database**: SQLite path
+- **Logs**: level, debug prompts
+- **Modes**: proactive comments, cooldown, probability
 
 ## Usage
 
@@ -121,32 +135,47 @@ The overlay launches automatically with `--gui`. It provides:
 
 Type `/help` in chat to see all available commands:
 
+- `/help` — show all available commands
+- `/exit`, `/quit` — exit the application
+- `/clear` — clear conversation history
+- `/context` — show current system prompt and context info
+- `/debug [on|off]` — toggle prompt debug logging
 - `/note add/list/show/delete/search` — manage notes
 - `/remind in/list/cancel` — manage reminders
 - `/remember importance:N <text>` — store an episodic memory
 - `/memories list/search/delete/important` — browse memories
-- `/proactive on/off/focus/unfocus` — control proactive comments
+- `/proactive [on|off|focus|unfocus]` — control or view proactive comments status
 - `/mood` — view emotional state
 - `/episodic` — memory statistics
-- `/model [status|download|uninstall]` — manage the local llama.cpp GGUF model
+- `/model [status|download|uninstall|delete]` — manage the local llama.cpp GGUF model
 - `/gui` — info about GUI mode
 
 ## Architecture
 
 ```
-main.py                   Entry point (QThread-based async init, splash screen)
+main.py                   Entry point (QThread-based async init, splash screen, singleton guard)
 src/
   config/
     config.py             Configuration loader (YAML) + AppUserModelID
-    logging_config.py     Logging setup
+    paths.py              Path resolution (resource vs user/config dirs)
+    credentials.py        OS keyring credential manager + .env fallback
+    secure_files.py       File permission hardening (0o600 POSIX, icacls Windows)
+    logging_config.py     Logging setup + SensitiveDataFilter
     i18n.py               Internationalization manager (EN/ES)
   core/
     conversation.py       Conversation engine (prompt building, LLM calls)
     context.py            Context builder for prompts
     state.py              Emotional state system (5 variables)
     events.py             OS event monitor (active window, idle, CPU/RAM)
+    intents.py            Visual intent catalog (16 intents)
+    visual_state_resolver.py  Intent priority resolver (agent > context > idle)
+  context/
+    context_pack.py       Context pack manager (app-aware sprite intents)
   llm/
     llm.py                LLM provider abstraction (Ollama, OpenAI-compatible)
+    llama_cpp.py          Embedded llama.cpp provider (optional)
+    download.py           GGUF model download utility
+    rate_limit.py         Token-bucket rate limiter for LLM calls
     prompts.py            System prompt templates
     proactive_engine.py   Proactive comment engine (rule-based)
     proactive_policy.py   Comment trigger policies
@@ -155,32 +184,36 @@ src/
     chroma_manager.py     ChromaDB client (long-term + episodic memory)
     database.py           SQLite client (notes, reminders, interaction log)
     episodic_summarizer.py LLM-based episodic summarization
+    episodic_utils.py     Milestone detection + memory suggestion helpers
   system/
     commands.py           Chat command handlers
     reminder_checker.py   Background reminder checker
     window_manager.py     Window detection for window-sitting
-    audio_capture.py      Audio capture for reactive dancing
   personality/
     comment_loader.py     Comment YAML loader
     personality_pack.py   Personality pack loader (ZIP/directory)
+    zip_security.py       ZIP archive validation (path traversal, manifest check)
   gui/
     windows/
       main_window.py      Main chat window (PySide6)
       overlay_window.py   Transparent overlay character window
-      settings_dialog.py  Settings dialog (5 panels)
+      settings_dialog.py  Settings dialog (6 panels with search)
       notes_dialog.py     Notes dialog
       reminders_dialog.py Reminders dialog
       memories_dialog.py  Memories dialog
+      privacy_consent.py  First-run privacy consent dialog
+      setup_wizard.py     First-run setup wizard
     widgets/
       speech_bubble.py    Animated speech bubble with inline input
       chat_widget.py      Chat bubble rendering (MessageBubble QFrame)
     managers/
       tray_icon.py        System tray icon (programmatic PNG)
       hint_manager.py     Optional visual hints and tooltips
-      window_sitting.py   Window-sitting controller
+      window_sitting.py   Window-sitting controller (4 modes)
     sprites/
       sprite_manager.py   Sprite manager + VisualStateResolver bridge
       sprite_loader.py    JSON Schema-validated sprite pack loader
+      sprite_models.py    Data classes (SpritePackData, AnimationClip)
       animation_controller.py  Clip player (intents, modes, overlays)
     styles/
       styles.py           UI design tokens and QSS (light/dark)
@@ -194,11 +227,12 @@ src/
 | **AI** | Ollama, OpenAI-compatible API (LM Studio, vLLM, Jan), embedded llama.cpp (llama-cpp-python, optional) |
 | **GUI** | PySide6 (Qt for Python) |
 | **OS Interaction** | pygetwindow, psutil, ctypes |
-| **Audio** | sounddevice, numpy |
+| **Audio** | sounddevice, numpy (optional, for audio-reactive dancing) |
+| **Security** | keyring (OS keyring), secure file permissions |
 | **Animation** | QPropertyAnimation, QTimer-based FPS control |
 | **Config** | YAML |
 | **i18n** | Custom JSON-based module |
-| **Testing** | pytest |
+| **Testing** | pytest, pytest-mock, pytest-qt |
 
 ## Testing
 
