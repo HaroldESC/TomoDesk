@@ -129,6 +129,42 @@ class TestMemoriesDialog:
         mock_memory_manager.delete_episodic_memory.assert_called_once_with(1)
 
 
+class TestForceTaskbarEntryHelper:
+    @staticmethod
+    def _make_dialog(qtbot):
+        from PySide6.QtWidgets import QDialog
+
+        dialog = QDialog()
+        qtbot.addWidget(dialog)
+        return dialog
+
+    def test_delegates_to_platform_adapter_with_hwnd(self, qtbot):
+        from src.gui.utils import force_taskbar_entry
+
+        dialog = self._make_dialog(qtbot)
+        adapter = MagicMock()
+        adapter.capabilities.taskbar_entry = True
+        adapter.force_taskbar_entry.return_value = True
+        with patch("src.gui.utils.get_platform", return_value=adapter):
+            result = force_taskbar_entry(dialog)
+        assert result is True
+        adapter.force_taskbar_entry.assert_called_once()
+        hwnd = adapter.force_taskbar_entry.call_args[0][0]
+        assert isinstance(hwnd, int)
+        assert hwnd == int(dialog.winId())
+
+    def test_noop_when_taskbar_entry_unsupported(self, qtbot):
+        from src.gui.utils import force_taskbar_entry
+
+        dialog = self._make_dialog(qtbot)
+        adapter = MagicMock()
+        adapter.capabilities.taskbar_entry = False
+        with patch("src.gui.utils.get_platform", return_value=adapter):
+            result = force_taskbar_entry(dialog)
+        assert result is False
+        adapter.force_taskbar_entry.assert_not_called()
+
+
 class TestMainWindow:
     def test_create_window(self, qtbot, mock_memory_manager, mock_config, mock_i18n):
         from src.gui.windows.main_window import MainWindow

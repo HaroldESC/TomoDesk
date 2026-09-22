@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.core.events import EventMonitor, SystemMonitor
+from src.platform import WindowInfo
 
 
 SNAPSHOT = {
@@ -17,15 +18,22 @@ SNAPSHOT = {
 
 
 class TestSystemMonitor:
+    @pytest.fixture
+    def adapter(self):
+        adapter = MagicMock()
+        adapter.get_active_window.return_value = WindowInfo(
+            "Code", (0, 0, 100, 100), None, False, False
+        )
+        adapter.get_idle_time_ms.return_value = 10000
+        return adapter
+
     @pytest.fixture(autouse=True)
-    def _mock_os(self):
-        with patch("src.core.events.gw") as gw:
-            gw.getActiveWindow.return_value = MagicMock(title="Code")
-            with patch("src.core.events._get_idle_time_ms", return_value=10000):
-                with patch("src.core.events.psutil.cpu_percent", return_value=25.0):
-                    with patch("src.core.events.psutil.virtual_memory") as vm:
-                        vm.return_value.percent = 45.0
-                        yield
+    def _mock_os(self, adapter):
+        with patch("src.core.events.get_platform", return_value=adapter):
+            with patch("src.core.events.psutil.cpu_percent", return_value=25.0):
+                with patch("src.core.events.psutil.virtual_memory") as vm:
+                    vm.return_value.percent = 45.0
+                    yield
 
     def test_system_monitor_poll(self):
         monitor = SystemMonitor()
@@ -42,6 +50,7 @@ class TestSystemMonitor:
             assert key in snapshot, f"Missing key: {key}"
         assert isinstance(snapshot["active_window"], str)
         assert isinstance(snapshot["idle_time_seconds"], int)
+        assert snapshot["idle_time_seconds"] == 10
         assert isinstance(snapshot["cpu_percent"], float)
         assert isinstance(snapshot["ram_percent"], float)
         assert 0.0 <= snapshot["ram_percent"] <= 100.0
@@ -55,6 +64,11 @@ class TestSystemMonitor:
         monitor = SystemMonitor()
         snapshot = monitor.poll()
         assert snapshot["active_window"] == "Code"
+
+    def test_system_monitor_unknown_when_no_active_window(self, adapter):
+        adapter.get_active_window.return_value = None
+        snapshot = SystemMonitor().poll()
+        assert snapshot["active_window"] == "Unknown"
 
 
 class TestEventMonitor:

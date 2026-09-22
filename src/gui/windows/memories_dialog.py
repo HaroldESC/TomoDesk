@@ -1,24 +1,10 @@
-import ctypes
-import sys
-
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QDialog, QHBoxLayout, QLabel, QListWidget,
     QListWidgetItem, QPushButton, QVBoxLayout,
 )
 
-if sys.platform == "win32":
-    _WS_EX_APPWINDOW = 0x00040000
-    _GWL_EXSTYLE = -20
-
-
-def _force_taskbar_entry(widget):
-    if sys.platform != "win32":
-        return
-    widget.winId()
-    hwnd = int(widget.winId())
-    current = ctypes.windll.user32.GetWindowLongW(hwnd, _GWL_EXSTYLE)
-    ctypes.windll.user32.SetWindowLongW(hwnd, _GWL_EXSTYLE, current | _WS_EX_APPWINDOW)
+from src.gui.utils import force_taskbar_entry
 
 
 class MemoriesDialog(QDialog):
@@ -34,7 +20,7 @@ class MemoriesDialog(QDialog):
         self.setStyleSheet(styles["dialog"])
         self._setup_ui()
         self._load_memories()
-        _force_taskbar_entry(self)
+        force_taskbar_entry(self)
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)

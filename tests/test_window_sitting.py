@@ -1,6 +1,7 @@
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import MagicMock
 
+from src.platform import WindowInfo
 from src.system.window_manager import WindowManager
 
 
@@ -13,25 +14,62 @@ class _FakeWindow:
         self.isMinimized = minimized
 
 
-def test_get_active_window_no_pygetwindow():
-    with patch("src.system.window_manager.HAS_PYWINDOW", False):
-        wm = WindowManager()
-        assert wm.get_active_window() is None
+class _FakeAdapter:
+    """Minimal PlatformAdapter stand-in for WindowManager tests."""
+
+    def __init__(self, active=None, all_windows=None, under_cursor=None, autohide=None):
+        self.active = active
+        self.all_windows = list(all_windows or [])
+        self.under_cursor = under_cursor
+        self.autohide = autohide
+
+    def get_active_window(self):
+        return self.active
+
+    def get_all_windows(self):
+        return list(self.all_windows)
+
+    def get_window_under_cursor(self):
+        return self.under_cursor
+
+    def get_idle_time_ms(self):
+        return 0
+
+    def taskbar_is_autohide(self):
+        return self.autohide
+
+
+def test_get_active_window_degraded_returns_none():
+    wm = WindowManager(adapter=_FakeAdapter(active=None))
+    assert wm.get_active_window() is None
 
 
 def test_get_all_windows_empty():
-    with patch("src.system.window_manager.HAS_PYWINDOW", True):
-        with patch("src.system.window_manager.gw") as gw:
-            gw.getWindowsWithTitle.return_value = []
-            wm = WindowManager()
-            assert wm.get_all_windows() == []
+    wm = WindowManager(adapter=_FakeAdapter(all_windows=[]))
+    assert wm.get_all_windows() == []
 
 
 def test_get_taskbar_geometry_no_pygetwindow(qapp):
-    with patch("src.system.window_manager.HAS_PYWINDOW", False):
-        wm = WindowManager()
-        geo = wm.get_taskbar_geometry()
-        assert "x" in geo and "y" in geo and "w" in geo and "h" in geo
+    wm = WindowManager(adapter=_FakeAdapter(autohide=None))
+    geo = wm.get_taskbar_geometry()
+    assert "x" in geo and "y" in geo and "w" in geo and "h" in geo
+
+
+def test_get_taskbar_geometry_finds_taskbar_window(qapp):
+    adapter = _FakeAdapter(
+        autohide=False,
+        all_windows=[WindowInfo("Taskbar", (0, 1040, 1920, 40), None, False, False)],
+    )
+    geo = WindowManager(adapter=adapter).get_taskbar_geometry()
+    assert geo == {"x": 0, "y": 1040, "w": 1920, "h": 40}
+
+
+def test_get_taskbar_geometry_autohide_strip(qapp):
+    adapter = _FakeAdapter(autohide=True, all_windows=[])
+    geo = WindowManager(adapter=adapter).get_taskbar_geometry()
+    assert geo["h"] == 5
+    screen = qapp.primaryScreen().geometry()
+    assert geo["y"] == screen.y() + screen.height() - 5
 
 
 class TestWindowManagerState:
@@ -45,24 +83,29 @@ class TestWindowManagerState:
     def test_to_dict_rejects_invalid_size(self):
         assert WindowManager._to_dict(_FakeWindow("W", 0, 0, 0, 0)) is None
 
+    def test_to_dict_from_window_info(self):
+        info = WindowInfo("W", (10, 20, 300, 200), 42, True, False)
+        data = WindowManager._to_dict(info)
+        assert data == {
+            "title": "W",
+            "bbox": (10, 20, 300, 200),
+            "hwnd": 42,
+            "maximized": True,
+            "minimized": False,
+        }
+
     def test_get_active_window_reports_maximized(self):
-        with patch("src.system.window_manager.HAS_PYWINDOW", True):
-            with patch("src.system.window_manager.gw") as gw:
-                gw.getActiveWindow.return_value = _FakeWindow(
-                    "Max", 0, 0, 1920, 1080, maximized=True
-                )
-                data = WindowManager().get_active_window()
-                assert data["maximized"] is True
+        info = WindowInfo("Max", (0, 0, 1920, 1080), None, True, False)
+        data = WindowManager(adapter=_FakeAdapter(active=info)).get_active_window()
+        assert data["maximized"] is True
 
     def test_get_all_windows_uses_normalizer(self):
-        with patch("src.system.window_manager.HAS_PYWINDOW", True):
-            with patch("src.system.window_manager.gw") as gw:
-                gw.getWindowsWithTitle.return_value = [
-                    _FakeWindow("A", 1, 2, 100, 100),
-                    _FakeWindow("B", 0, 0, 0, 0),
-                ]
-                windows = WindowManager().get_all_windows()
-                assert [w["title"] for w in windows] == ["A"]
+        infos = [
+            WindowInfo("A", (1, 2, 100, 100), None, False, False),
+            WindowInfo("B", (0, 0, 0, 0), None, False, False),
+        ]
+        windows = WindowManager(adapter=_FakeAdapter(all_windows=infos)).get_all_windows()
+        assert [w["title"] for w in windows] == ["A"]
 
 
 class TestWindowSittingController:

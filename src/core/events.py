@@ -1,42 +1,20 @@
-import ctypes
 import logging
 import threading
 import time
-from ctypes import wintypes
 from datetime import datetime
 from threading import Lock
 from typing import Dict, List, Tuple
 
 import psutil
 
+from src.platform import get_platform
+
 logger = logging.getLogger(__name__)
-
-try:
-    import pygetwindow as gw
-except (ImportError, NotImplementedError):
-    gw = None
-    logger.warning("pygetwindow not available. Window detection disabled.")
-
-
-class _LASTINPUTINFO(ctypes.Structure):
-    _fields_ = [("cbSize", wintypes.UINT), ("dwTime", wintypes.DWORD)]
-
-
-_idle_warning_logged = False
 
 
 def _get_idle_time_ms() -> int:
-    global _idle_warning_logged
-    try:
-        lii = _LASTINPUTINFO()
-        lii.cbSize = ctypes.sizeof(_LASTINPUTINFO)
-        if ctypes.windll.user32.GetLastInputInfo(ctypes.byref(lii)):
-            return ctypes.windll.kernel32.GetTickCount() - lii.dwTime
-    except Exception:
-        if not _idle_warning_logged:
-            logger.warning("Failed to get idle time, falling back to 0")
-            _idle_warning_logged = True
-    return 0
+    """Idle del usuario en ms via el adapter de plataforma; degradado: 0."""
+    return get_platform().get_idle_time_ms()
 
 
 class SystemMonitor:
@@ -49,8 +27,8 @@ class SystemMonitor:
         if self._config:
             enabled = bool(self._config.get("privacy", {}).get("monitor_active_window", True))
         try:
-            win = gw.getActiveWindow()
-            active_window = win.title if win else "Unknown"
+            info = get_platform().get_active_window()
+            active_window = info.title if info else "Unknown"
         except Exception:
             active_window = "Unknown"
         if not enabled:

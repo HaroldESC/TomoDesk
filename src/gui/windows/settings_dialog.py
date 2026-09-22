@@ -1,8 +1,5 @@
-import ctypes
 import logging
-import os
 import shutil
-import sys
 import tempfile
 from pathlib import Path
 
@@ -30,21 +27,9 @@ from src.context.context_pack import ContextPackManager
 from src.gui.managers.window_sitting import FALLBACK_POSITIONS, TARGET_MODES
 from src.gui.sprites.sprite_loader import SpriteLoader
 from src.gui.styles.styles import get_style_set
+from src.gui.utils import force_taskbar_entry
 from src.personality.personality_pack import packs_root
-
-
-if sys.platform == "win32":
-    _WS_EX_APPWINDOW = 0x00040000
-    _GWL_EXSTYLE = -20
-
-
-def _force_taskbar_entry(widget):
-    if sys.platform != "win32":
-        return
-    widget.winId()
-    hwnd = int(widget.winId())
-    current = ctypes.windll.user32.GetWindowLongW(hwnd, _GWL_EXSTYLE)
-    ctypes.windll.user32.SetWindowLongW(hwnd, _GWL_EXSTYLE, current | _WS_EX_APPWINDOW)
+from src.platform import PlatformCapabilities, get_platform
 
 logger = logging.getLogger(__name__)
 _creds = CredentialManager()
@@ -118,7 +103,7 @@ class SettingsDialog(QDialog):
         self._dirty = False
         self._setup_ui()
         self._connect_dirty_tracking()
-        _force_taskbar_entry(self)
+        force_taskbar_entry(self)
 
     # ── helpers ──────────────────────────────────────────────────────────────
 
@@ -908,15 +893,53 @@ class SettingsDialog(QDialog):
         self.privacy_monitor_cb = QCheckBox(self.i18n.t("dialogs.settings.privacy_monitoring"))
         self.privacy_monitor_cb.setChecked(privacy.get("monitor_active_window", True))
         layout.addWidget(self.privacy_monitor_cb)
+        if not self._platform_capabilities().window_enumeration:
+            self.privacy_monitor_cb.setEnabled(False)
+            self.privacy_monitor_cb.setToolTip(
+                self.i18n.t("dialogs.settings.disabled_platform")
+            )
 
     # ── 5. Avanzado ──────────────────────────────────────────────────────────
 
     def _build_advanced_page(self, layout):
+        self._add_group(layout, "dialogs.settings.advanced_platform",
+                        self._build_advanced_platform)
         self._add_group(layout, "dialogs.settings.advanced_sitting", self._build_advanced_sitting)
         self._add_group(layout, "dialogs.settings.advanced_database", self._build_advanced_database)
         self._add_group(layout, "dialogs.settings.advanced_logs", self._build_advanced_logs)
         self._add_group(layout, "dialogs.settings.advanced_about", self._build_advanced_about)
         layout.addStretch()
+
+    def _platform_capabilities(self) -> PlatformCapabilities:
+        """Capabilities of the current platform adapter, cached per dialog."""
+        caps = getattr(self, "_platform_caps", None)
+        if caps is None:
+            caps = get_platform().capabilities
+            self._platform_caps = caps
+        return caps
+
+    def _build_advanced_platform(self, layout):
+        caps = self._platform_capabilities()
+        missing_keys = []
+        if not caps.window_enumeration:
+            missing_keys.append("dialogs.settings.cap_window_enumeration")
+        if not caps.idle_time:
+            missing_keys.append("dialogs.settings.cap_idle_time")
+        if not caps.taskbar_detection or not caps.taskbar_entry:
+            missing_keys.append("dialogs.settings.cap_taskbar")
+        if not caps.open_path:
+            missing_keys.append("dialogs.settings.cap_open_path")
+        if missing_keys:
+            missing = ", ".join(self.i18n.t(key) for key in missing_keys)
+            text = self.i18n.t(
+                "dialogs.settings.advanced_platform_body", missing=missing
+            )
+        else:
+            text = self.i18n.t("dialogs.settings.advanced_platform_full")
+        body = QLabel(text)
+        body.setWordWrap(True)
+        self.adv_platform_body = body
+        layout.addWidget(body)
 
     @staticmethod
     def _select_combo_data(combo, value):
@@ -976,6 +999,12 @@ class SettingsDialog(QDialog):
                       self.ws_maximized)
         self._add_row(layout, self.i18n.t("dialogs.settings.ws_minimized_behavior"),
                       self.ws_minimized)
+
+        if not self._platform_capabilities().window_enumeration:
+            for widget in (self.ws_target, self.ws_fallback,
+                           self.ws_maximized, self.ws_minimized):
+                widget.setEnabled(False)
+                widget.setToolTip(self.i18n.t("dialogs.settings.disabled_platform"))
 
     def _build_advanced_database(self, layout):
         db = self.config.get("database", {})
@@ -1195,7 +1224,8 @@ class SettingsDialog(QDialog):
     def _on_open_logs_folder(self):
         dir_path = log_dir()
         dir_path.mkdir(parents=True, exist_ok=True)
-        os.startfile(str(dir_path))
+        if not get_platform().open_path(dir_path):
+            logger.warning(f"Failed to open logs folder: {dir_path}")
 
     def _on_reset_hints(self):
         hints = self.config.setdefault("ui", {}).setdefault("hints", {})

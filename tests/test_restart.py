@@ -2,10 +2,12 @@
 
 import os
 import sys
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import main as main_module
 from main import _restart_command, _restart_process
+
+_MOCK_CREATION_FLAGS = 0x0BADF00D
 
 
 def _use_tmp_lock(tmp_path, monkeypatch):
@@ -35,13 +37,26 @@ def test_restart_command_frozen_preserves_extra_args():
     assert args == [sys.executable, "--cli"]
 
 
-def test_restart_command_windows_uses_no_window_flag():
-    if sys.platform != "win32":
-        return
+def test_restart_command_uses_platform_adapter_flags():
+    adapter = MagicMock()
+    adapter.popen_creationflags.return_value = _MOCK_CREATION_FLAGS
     with patch.object(main_module.paths, "is_frozen", return_value=True), \
-         patch.object(main_module.sys, "platform", "win32"):
+         patch.object(main_module.sys, "argv", [sys.executable]), \
+         patch("src.platform.get_platform", return_value=adapter):
         args, flags = _restart_command()
-    assert flags & getattr(main_module.subprocess, "CREATE_NO_WINDOW", 0)
+    adapter.popen_creationflags.assert_called_once_with()
+    assert flags == _MOCK_CREATION_FLAGS
+    assert args == [sys.executable]
+
+
+def test_restart_process_passes_adapter_flags_to_popen():
+    adapter = MagicMock()
+    adapter.popen_creationflags.return_value = _MOCK_CREATION_FLAGS
+    with patch("src.platform.get_platform", return_value=adapter), \
+         patch("main.subprocess.Popen") as popen:
+        _restart_process()
+    popen.assert_called_once()
+    assert popen.call_args.kwargs["creationflags"] == _MOCK_CREATION_FLAGS
 
 
 def test_restart_process_does_not_raise_on_failure():

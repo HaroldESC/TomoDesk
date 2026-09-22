@@ -5,6 +5,33 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-09-22
+
+### Added
+
+- Platform abstraction layer `src/platform/`: `PlatformAdapter` contract with
+  `WindowsAdapter` (pygetwindow + ctypes) and a degraded `NullAdapter` for
+  other platforms, selected by a thread-safe `get_platform()` factory.
+  `PlatformCapabilities` reports which desktop integrations are available.
+- Settings → Advanced shows an `advanced_platform` group listing unavailable
+  capabilities (EN/ES) and disables window-sitting and active-window privacy
+  controls when window enumeration is unsupported.
+
+### Changed
+
+- `WindowManager` is now a Qt-aware facade over the platform adapter; its
+  public dict contract and `window_sitting.py` behavior are unchanged.
+- `SystemMonitor` reads idle time and the active window through the adapter
+  (`None` title maps to the `"Unknown"` sentinel).
+- The taskbar-entry helper duplicated across four dialogs moved to
+  `src/gui/utils.py` and delegates to the adapter.
+- `_restart_command()` gets its `creationflags` from the adapter.
+
+### Fixed
+
+- Opening the logs folder from Settings crashed on non-Windows platforms
+  (`os.startfile` had no platform guard); it now uses `adapter.open_path()`.
+
 ## [1.5.0] - 2026-09-17
 
 ### Added
@@ -106,3 +133,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.4.0]: https://github.com/HaroldESC/TomoDesk/releases/tag/v1.4.0
 [1.4.1]: https://github.com/HaroldESC/TomoDesk/releases/tag/v1.4.1
 [1.5.0]: https://github.com/HaroldESC/TomoDesk/releases/tag/v1.5.0
+[1.6.0]: https://github.com/HaroldESC/TomoDesk/releases/tag/v1.6.0

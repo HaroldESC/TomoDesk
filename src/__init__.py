@@ -1,4 +1,4 @@
 from src.system.window_manager import WindowManager
 from src.personality.personality_pack import PersonalityPackManager
 
-__version__ = "1.5.0"
+__version__ = "1.6.0"

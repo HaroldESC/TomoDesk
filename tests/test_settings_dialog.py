@@ -7,6 +7,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QGroupBox, QMessageBox, QSizePolicy
 
 from src.context.context_pack import ContextPackManager
+from src.platform import PlatformCapabilities, _set_platform
 
 
 @pytest.fixture
@@ -22,6 +23,27 @@ def mock_config():
 @pytest.fixture(autouse=True)
 def ensure_qapp(qapp):
     return qapp
+
+
+@pytest.fixture
+def inject_platform():
+    """Inject a fake platform adapter; full capabilities unless overridden."""
+    def _inject(**overrides):
+        values = {
+            "platform": "test",
+            "window_enumeration": True,
+            "idle_time": True,
+            "taskbar_detection": True,
+            "taskbar_entry": True,
+            "open_path": True,
+        }
+        values.update(overrides)
+        adapter = MagicMock()
+        adapter.capabilities = PlatformCapabilities(**values)
+        _set_platform(adapter)
+        return adapter
+    yield _inject
+    _set_platform(None)
 
 
 def _make_dialog(qtbot, config, mock_i18n, context_manager=None, proactive_engine=None):
@@ -436,3 +458,100 @@ class TestWindowSittingSettings:
         dialog.behavior_dnd_cb.setChecked(True)
         dialog._save_behavior()
         policy.set_dnd_mode.assert_called_once_with(True)
+
+
+def _platform_dependent_controls(dialog):
+    return (
+        dialog.ws_target,
+        dialog.ws_fallback,
+        dialog.ws_maximized,
+        dialog.ws_minimized,
+        dialog.privacy_monitor_cb,
+    )
+
+
+class TestPlatformCapabilitiesUI:
+    def test_platform_group_is_first_on_advanced_page(
+        self, qtbot, mock_config, mock_i18n
+    ):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        texts = _group_texts(dialog._pages[5])
+        assert len(texts) == 5
+        assert texts[0] == "dialogs.settings.advanced_platform"
+        assert texts[1] == "dialogs.settings.advanced_sitting"
+        assert "dialogs.settings.advanced_database" in texts
+        assert "dialogs.settings.advanced_logs" in texts
+        assert "dialogs.settings.advanced_about" in texts
+
+    def test_missing_capabilities_disable_controls_and_list_missing(
+        self, qtbot, mock_config, mock_i18n, inject_platform
+    ):
+        inject_platform(
+            window_enumeration=False,
+            idle_time=False,
+            taskbar_detection=False,
+            taskbar_entry=False,
+            open_path=False,
+        )
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        for control in _platform_dependent_controls(dialog):
+            assert not control.isEnabled()
+            assert control.toolTip() == "dialogs.settings.disabled_platform"
+        assert (
+            dialog.adv_platform_body.text()
+            == "dialogs.settings.advanced_platform_body"
+        )
+        requested = [call.args[0] for call in mock_i18n.t.call_args_list]
+        for key in (
+            "dialogs.settings.cap_window_enumeration",
+            "dialogs.settings.cap_idle_time",
+            "dialogs.settings.cap_taskbar",
+            "dialogs.settings.cap_open_path",
+        ):
+            assert key in requested
+
+    def test_partial_missing_capabilities_only_list_missing(
+        self, qtbot, mock_config, mock_i18n, inject_platform
+    ):
+        inject_platform(idle_time=False)
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        for control in _platform_dependent_controls(dialog):
+            assert control.isEnabled()
+        assert (
+            dialog.adv_platform_body.text()
+            == "dialogs.settings.advanced_platform_body"
+        )
+        requested = [call.args[0] for call in mock_i18n.t.call_args_list]
+        assert "dialogs.settings.cap_idle_time" in requested
+        assert "dialogs.settings.cap_window_enumeration" not in requested
+        assert "dialogs.settings.cap_taskbar" not in requested
+        assert "dialogs.settings.cap_open_path" not in requested
+
+    def test_full_capabilities_enable_controls(
+        self, qtbot, mock_config, mock_i18n, inject_platform
+    ):
+        inject_platform()
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        for control in _platform_dependent_controls(dialog):
+            assert control.isEnabled()
+            assert control.toolTip() == ""
+        assert (
+            dialog.adv_platform_body.text()
+            == "dialogs.settings.advanced_platform_full"
+        )
+        requested = [call.args[0] for call in mock_i18n.t.call_args_list]
+        assert "dialogs.settings.cap_window_enumeration" not in requested
+
+
+class TestOpenLogsFolder:
+    def test_uses_platform_adapter_open_path(
+        self, qtbot, mock_config, mock_i18n, inject_platform, tmp_path
+    ):
+        adapter = inject_platform()
+        adapter.open_path.return_value = False
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        with patch(
+            "src.gui.windows.settings_dialog.log_dir", return_value=tmp_path
+        ):
+            dialog._on_open_logs_folder()  # must not raise
+        adapter.open_path.assert_called_once_with(tmp_path)

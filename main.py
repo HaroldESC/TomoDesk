@@ -577,16 +577,15 @@ def _restart_command():
 
     En modo empaquetado ``sys.argv[0] == sys.executable``, asi que se omiten los
     argumentos de programa para no duplicar la ruta del exe (rompe argparse).
+    Los ``creationflags`` los decide el adaptador de plataforma.
     """
+    from src.platform import get_platform
+
     process_args = [
         sys.executable,
         *(sys.argv[1:] if paths.is_frozen() else sys.argv),
     ]
-    flags = 0
-    if sys.platform == "win32":
-        flags |= subprocess.CREATE_NO_WINDOW
-        flags |= getattr(subprocess, "DETACHED_PROCESS", 0)
-    return process_args, flags
+    return process_args, get_platform().popen_creationflags()
 
 
 def _restart_process() -> None:
