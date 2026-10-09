@@ -359,3 +359,33 @@ class ChromaManager:
         except Exception:
             logger.exception("ChromaDB count failed")
             return 0
+
+    def clear_all_collections(self) -> None:
+        """Delete every document from every managed collection.
+
+        Uses only the public ``get``/``delete`` API so it also works with
+        the degraded ``_collections`` state produced by a failed
+        ``initialize()``. The query cache is invalidated afterwards.
+        """
+        for name in list(self._collections):
+            self.clear_collection(name)
+        self._query_cache.invalidate_all()
+
+    def clear_collection(self, collection_name: str) -> int:
+        """Delete every document of one collection. Returns how many went.
+
+        Failures are logged, not raised, so a broken collection cannot
+        abort a maintenance operation.
+        """
+        try:
+            col = self._collections[collection_name]
+            existing = col.get()
+            ids = existing.get("ids") or []
+            if ids:
+                col.delete(ids=ids)
+            logger.info("Cleared ChromaDB collection %s (%d docs)", collection_name, len(ids))
+            self._query_cache.invalidate_all()
+            return len(ids)
+        except Exception:
+            logger.exception("Failed to clear ChromaDB collection %s", collection_name)
+            return 0

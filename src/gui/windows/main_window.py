@@ -417,6 +417,38 @@ class MainWindow(QMainWindow):
             msg,
         )
 
+    def play_tutorial(self) -> None:
+        """Replay the onboarding hints anchored to the overlay.
+
+        Settings calls this from "Play initial tutorial". The hints are
+        shown one at a time over the overlay so the user sees where to
+        interact, instead of reading a static dialog.
+        """
+        if self.overlay is None:
+            self._show_interaction_guide()
+            return
+
+        hint_manager = getattr(self.overlay, "hint_manager", None)
+        if hint_manager is None:
+            self._show_interaction_guide()
+            return
+
+        hint_manager.reset_hints()
+        if not self.overlay.isVisible():
+            self._toggle_overlay()
+
+        center = self.overlay.mapToGlobal(self.overlay.rect().center())
+
+        def _step(delay: int, show) -> None:
+            QTimer.singleShot(delay, lambda: show(center, self.overlay))
+
+        _step(0, hint_manager.show_drag_hint)
+        _step(3500, hint_manager.show_click_hint)
+        _step(7000, hint_manager.show_double_click_hint)
+        _step(10500, hint_manager.show_right_click_hint)
+        _step(14000, hint_manager.show_bubble_click_hint)
+        logger.info("Tutorial replayed")
+
     def _clear_chat(self):
         self.chat.clear()
         self.memory_manager.clear_short_term()

@@ -229,3 +229,73 @@ class TestEdgeCases:
     def test_clear_empty_short_term(self, memory):
         memory.clear_short_term()
         assert memory.get_recent_messages() == []
+
+
+class TestMaintenance:
+    def test_clear_all_memories_wipes_everything(self, memory):
+        memory.add_message("user", "hi")
+        memory.add_note("Title", "Content")
+        memory.add_reminder("Reminder", "2026-12-31 23:59:59")
+        memory.log_interaction("user_message", {"text": "hello"})
+        memory.add_episodic_memory("Summary", 0.8, "manual")
+
+        memory.clear_all_memories()
+
+        assert memory.get_recent_messages() == []
+        assert memory.list_notes() == []
+        assert memory.list_reminders() == []
+        assert memory.list_episodic_log() == []
+        # Chroma collections are emptied too.
+        assert memory._chroma.collections.get("notes_index", []) == []
+        assert memory._chroma.collections.get("episodic_memory", []) == []
+
+    def test_clear_all_memories_survives_chroma_failure(self, memory):
+        from tests.mock_chroma import MockChroma
+        memory._chroma = MockChroma(fail_get=True)
+        memory.add_note("Title", "Content")
+
+        # Must not raise: SQLite still gets wiped.
+        memory.clear_all_memories()
+        assert memory.list_notes() == []
+
+    def test_reindex_notes_rebuilds_collection(self, memory):
+        memory.add_note("First", "Body one")
+        memory.add_note("Second", "Body two")
+        notes = memory.list_notes()
+
+        # Simulate a lost/corrupted index: SQLite rows survive.
+        memory._chroma.clear_collection("notes_index")
+        assert memory._chroma.collections.get("notes_index", []) == []
+
+        count = memory.reindex_notes()
+
+        assert count == len(notes)
+        docs = memory._chroma.collections.get("notes_index", [])
+        assert len(docs) == count
+        assert {d["id"] for d in docs} == {f"note_{n['id']}" for n in notes}
+        # Searchable again through the rebuilt index.
+        assert memory.search_notes_semantic("First")
+
+    def test_reindex_notes_drops_stale_entries(self, memory):
+        """Stale documents left behind are removed, not duplicated."""
+        memory.add_note("First", "Body one")
+        memory._chroma.add_to_collection(
+            "notes_index", ["stale doc"], [{"note_id": 999}], ["note_999"]
+        )
+
+        count = memory.reindex_notes()
+
+        assert count == 1
+        ids = {d["id"] for d in memory._chroma.collections["notes_index"]}
+        assert ids == {"note_1"}
+
+    def test_reindex_notes_does_not_touch_other_collections(self, memory):
+        memory.add_note("Title", "Content")
+        memory.add_personality_trait("friendly")
+        memory.add_long_term_memory("a memory", "fact")
+
+        memory.reindex_notes()
+
+        assert len(memory._chroma.collections.get("personality", [])) == 1
+        assert len(memory._chroma.collections.get("memories", [])) == 1
+        assert len(memory._chroma.collections.get("notes_index", [])) == 1

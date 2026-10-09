@@ -70,3 +70,17 @@ class MockChroma:
         except Exception:
             _log.exception("MockChroma get_all failed")
             return []
+
+    def clear_collection(self, collection_name):
+        """Drop every document of one collection. Returns how many went."""
+        try:
+            docs = self.collections.get(collection_name, [])
+            self.collections[collection_name] = []
+            return len(docs)
+        except Exception:
+            _log.exception("MockChroma clear_collection failed")
+            return 0
+
+    def clear_all_collections(self):
+        for name in list(self.collections):
+            self.clear_collection(name)

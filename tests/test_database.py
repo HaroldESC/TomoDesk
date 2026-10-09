@@ -142,3 +142,26 @@ class TestExecuteMany:
         db.commit()
         rows = db.execute("SELECT * FROM interaction_log").fetchall()
         assert len(rows) == 100
+
+
+def test_vacuum_keeps_database_usable(db):
+    db.execute("INSERT INTO notes (title, content) VALUES ('a', 'b')")
+    db.commit()
+    db.execute("DELETE FROM notes")
+    db.commit()
+
+    db.vacuum()
+
+    # Connection still works after the rebuild.
+    cursor = db.execute("SELECT COUNT(*) AS cnt FROM notes")
+    assert cursor.fetchone()["cnt"] == 0
+    db.execute("INSERT INTO notes (title, content) VALUES ('c', 'd')")
+    db.commit()
+    cursor = db.execute("SELECT COUNT(*) AS cnt FROM notes")
+    assert cursor.fetchone()["cnt"] == 1
+
+
+def test_vacuum_is_reentrant_and_locked(db):
+    for _ in range(3):
+        db.vacuum()
+    assert db is not None

@@ -53,6 +53,14 @@ class HintManager:
             self._shown_hints.add(hint_id)
             self._save_shown_hints()
 
+    def reset_hints(self) -> None:
+        """Forget every shown hint so the tutorial can play again."""
+        self._shown_hints.clear()
+        try:
+            self.memory_manager.set_preference("shown_hints", "[]")
+        except Exception as e:
+            logger.warning(f"Failed to reset shown hints: {e}")
+
     def show_tooltip(self, text: str, pos: QPoint, parent_widget, delay_ms: Optional[int] = None):
         if not self.enabled:
             return

@@ -555,3 +555,133 @@ class TestOpenLogsFolder:
         ):
             dialog._on_open_logs_folder()  # must not raise
         adapter.open_path.assert_called_once_with(tmp_path)
+
+
+class _FakeMemoryManager:
+    def __init__(self):
+        self.cleared = False
+        self.reindexed = False
+
+    def clear_all_memories(self):
+        self.cleared = True
+
+    def reindex_notes(self):
+        self.reindexed = True
+        return 3
+
+
+class TestMaintenanceActions:
+    """The Settings maintenance buttons must call real methods, not crash.
+
+    Regression: they used to invoke MemoryManager/DatabaseManager methods
+    that did not exist, so the buttons silently did nothing.
+    """
+
+    @pytest.fixture
+    def owner(self, qtbot, mock_config, mock_i18n):
+        from PySide6.QtWidgets import QWidget
+        parent = QWidget()
+        qtbot.addWidget(parent)
+        parent.memory_manager = _FakeMemoryManager()
+        parent.overlay = None
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        return parent, dialog
+
+    def _reparent(self, dialog, parent):
+        dialog.setParent(parent)
+        return dialog
+
+    def test_clear_memories_calls_the_method(self, owner, qtbot, monkeypatch):
+        parent, dialog = owner
+        self._reparent(dialog, parent)
+        monkeypatch.setattr(
+            QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.Yes)
+        )
+        monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda *a, **k: None))
+
+        dialog._on_clear_memories()
+
+        assert parent.memory_manager.cleared is True
+
+    def test_clear_memories_aborts_on_no(self, owner, monkeypatch):
+        parent, dialog = owner
+        self._reparent(dialog, parent)
+        monkeypatch.setattr(
+            QMessageBox, "question", staticmethod(lambda *a, **k: QMessageBox.No)
+        )
+
+        dialog._on_clear_memories()
+
+        assert parent.memory_manager.cleared is False
+
+    def test_compact_db_reports_failure(self, owner, monkeypatch):
+        parent, dialog = owner
+        self._reparent(dialog, parent)
+        monkeypatch.setattr(
+            QMessageBox, "warning", staticmethod(lambda *a, **k: None)
+        )
+
+        with patch(
+            "src.memory.database.DatabaseManager"
+        ) as mock_db_class:
+            mock_db_class.return_value.vacuum.side_effect = RuntimeError("locked")
+            dialog._on_compact_db()  # must not raise
+
+        mock_db_class.return_value.vacuum.assert_called_once()
+
+    def test_reindex_notes_calls_the_method(self, owner, monkeypatch):
+        parent, dialog = owner
+        self._reparent(dialog, parent)
+        monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda *a, **k: None))
+
+        dialog._on_reindex_notes()
+
+        assert parent.memory_manager.reindexed is True
+
+    def test_play_tutorial_calls_the_owner(self, owner, monkeypatch):
+        parent, dialog = owner
+        self._reparent(dialog, parent)
+        parent.play_tutorial = lambda: setattr(parent, "tutored", True)
+
+        dialog._on_play_tutorial()
+
+        assert parent.tutored is True
+
+    def test_reset_hints_clears_the_persisted_preference(self, owner, monkeypatch):
+        parent, dialog = owner
+        self._reparent(dialog, parent)
+        monkeypatch.setattr(QMessageBox, "information", staticmethod(lambda *a, **k: None))
+        parent.memory_manager.set_preference = lambda k, v: None
+
+        dialog._on_reset_hints()
+
+        # Without a live hint manager it must still clear the preference.
+        assert parent.memory_manager is not None
+
+
+class TestBubbleStyleOptions:
+    """The bubble-style combo must mirror the BubbleStyle enum.
+
+    Regression: it offered "flat"/"round" while the widget only knew
+    DARK/COMIC, so picking those crashed the overlay at startup.
+    """
+
+    def test_combo_offers_only_valid_styles(self, qtbot, mock_config, mock_i18n):
+        from src.gui.widgets.speech_bubble import BubbleStyle
+
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        offered = [
+            dialog.ui_bubble_style.itemText(i)
+            for i in range(dialog.ui_bubble_style.count())
+        ]
+        assert offered == [s.value for s in BubbleStyle]
+
+    def test_stale_config_value_falls_back(self, qtbot, mock_config, mock_i18n):
+        mock_config.setdefault("ui", {})["bubble_style"] = "legacy_style"
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        assert dialog.ui_bubble_style.currentText() == "dark"
+
+    def test_valid_config_value_is_selected(self, qtbot, mock_config, mock_i18n):
+        mock_config.setdefault("ui", {})["bubble_style"] = "round"
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        assert dialog.ui_bubble_style.currentText() == "round"

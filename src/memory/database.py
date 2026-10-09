@@ -113,6 +113,21 @@ class DatabaseManager:
         except sqlite3.OperationalError:
             pass
 
+    def vacuum(self) -> None:
+        """Rebuild the database file to reclaim space from deleted rows.
+
+        ``VACUUM`` cannot run inside a transaction, so the lock is held while
+        the command is issued and the connection is committed cleanly.
+        """
+        with self._lock:
+            try:
+                self._conn.execute("VACUUM")
+                self._conn.commit()
+                logger.info("Database vacuumed: %s", self._db_path)
+            except sqlite3.Error:
+                logger.error("Failed to vacuum database %s", self._db_path, exc_info=True)
+                raise
+
     def _get_connection(self) -> sqlite3.Connection:
         return self._conn
 

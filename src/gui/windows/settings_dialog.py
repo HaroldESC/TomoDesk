@@ -28,11 +28,13 @@ from src.gui.managers.window_sitting import FALLBACK_POSITIONS, TARGET_MODES
 from src.gui.sprites.sprite_loader import SpriteLoader
 from src.gui.styles.styles import get_style_set
 from src.gui.utils import force_taskbar_entry
+from src.gui.widgets.speech_bubble import BubbleStyle
 from src.personality.personality_pack import packs_root
 from src.platform import PlatformCapabilities, get_platform
 
 logger = logging.getLogger(__name__)
 _creds = CredentialManager()
+_BUBBLE_STYLE_VALUES = frozenset(s.value for s in BubbleStyle)
 
 
 class _ModelDownloadWorker(QThread):
@@ -209,8 +211,13 @@ class SettingsDialog(QDialog):
         layout.addWidget(self.ui_overlay)
 
         self.ui_bubble_style = QComboBox()
-        self.ui_bubble_style.addItems(["comic", "flat", "round"])
-        self.ui_bubble_style.setCurrentText(ui.get("bubble_style", "comic"))
+        # The list is derived from the enum so it can never offer a value
+        # the widget would reject at startup.
+        self.ui_bubble_style.addItems([s.value for s in BubbleStyle])
+        current = ui.get("bubble_style", "comic")
+        if current not in _BUBBLE_STYLE_VALUES:
+            current = BubbleStyle.DARK.value
+        self.ui_bubble_style.setCurrentText(current)
         self._add_row(layout, self.i18n.t("dialogs.settings.bubble_style"), self.ui_bubble_style)
 
         self.ui_bubble_lines = QSpinBox()
@@ -1139,11 +1146,21 @@ class SettingsDialog(QDialog):
             QMessageBox.Yes | QMessageBox.No,
         )
         if reply == QMessageBox.Yes:
-            from src.memory.memory import MemoryManager
             mm = getattr(self.parent(), "memory_manager", None)
             if mm:
-                mm.clear_all_memories()
-                logger.info("All memories cleared via settings")
+                try:
+                    mm.clear_all_memories()
+                    logger.info("All memories cleared via settings")
+                    QMessageBox.information(
+                        self, self.i18n.t("dialogs.settings.confirm_title"),
+                        self.i18n.t("dialogs.settings.memories_cleared"),
+                    )
+                except Exception as e:
+                    logger.error(f"Clear memories failed: {e}")
+                    QMessageBox.warning(
+                        self, self.i18n.t("dialogs.settings.confirm_title"),
+                        self.i18n.t("dialogs.settings.memory_clear_failed", error=str(e)),
+                    )
 
     def _on_compact_db(self):
         from src.memory.database import DatabaseManager
@@ -1153,6 +1170,7 @@ class SettingsDialog(QDialog):
             db = DatabaseManager(db_path)
             db.initialize()
             db.vacuum()
+            db.close()
             logger.info(f"Database compacted: {db_path}")
             QMessageBox.information(
                 self, self.i18n.t("dialogs.settings.confirm_title"),
@@ -1160,6 +1178,10 @@ class SettingsDialog(QDialog):
             )
         except Exception as e:
             logger.error(f"Failed to compact database: {e}")
+            QMessageBox.warning(
+                self, self.i18n.t("dialogs.settings.confirm_title"),
+                self.i18n.t("dialogs.settings.db_compact_failed", error=str(e)),
+            )
 
     def _on_export_memories(self):
         path, _ = QFileDialog.getSaveFileName(
@@ -1228,9 +1250,23 @@ class SettingsDialog(QDialog):
             logger.warning(f"Failed to open logs folder: {dir_path}")
 
     def _on_reset_hints(self):
-        hints = self.config.setdefault("ui", {}).setdefault("hints", {})
-        hints["dismissed"] = []
-        logger.info("All hints reset")
+        hint_manager = self._hint_manager()
+        if hint_manager is not None:
+            hint_manager.reset_hints()
+            logger.info("All hints reset")
+            QMessageBox.information(
+                self, self.i18n.t("dialogs.settings.confirm_title"),
+                self.i18n.t("dialogs.settings.hints_reset_done"),
+            )
+            return
+        # No live owner yet: fall back to clearing the persisted preference
+        # so the hints replay on the next start.
+        try:
+            mm = getattr(self.parent(), "memory_manager", None)
+            if mm:
+                mm.set_preference("shown_hints", "[]")
+        except Exception:
+            logger.warning("Failed to reset hints", exc_info=True)
 
     def _on_browse_pack_dir(self):
         path = QFileDialog.getExistingDirectory(
@@ -1302,24 +1338,34 @@ class SettingsDialog(QDialog):
         if path:
             self.mem_chroma_path.setText(path)
 
+    def _hint_manager(self):
+        """Live HintManager owned by the overlay, if any."""
+        overlay = getattr(self.parent(), "overlay", None)
+        if overlay is not None:
+            return getattr(overlay, "hint_manager", None)
+        return None
+
     def _on_reindex_notes(self):
         from src.memory.memory import MemoryManager
         mm = getattr(self.parent(), "memory_manager", None)
-        if mm and hasattr(mm, "reindex_notes"):
-            try:
-                mm.reindex_notes()
-                logger.info("Notes reindexed")
-                QMessageBox.information(
-                    self, self.i18n.t("dialogs.settings.confirm_title"),
-                    self.i18n.t("dialogs.settings.memory_reindex_done"),
-                )
-            except Exception as e:
-                logger.error(f"Reindex failed: {e}")
+        if not mm:
+            return
+        try:
+            count = mm.reindex_notes()
+            logger.info("Notes reindexed (%d)", count)
+            QMessageBox.information(
+                self, self.i18n.t("dialogs.settings.confirm_title"),
+                self.i18n.t("dialogs.settings.memory_reindex_done"),
+            )
+        except Exception as e:
+            logger.error(f"Reindex failed: {e}")
 
     def _on_play_tutorial(self):
         parent = self.parent()
-        if parent and hasattr(parent, "play_tutorial"):
+        if parent is not None and hasattr(parent, "play_tutorial"):
             parent.play_tutorial()
+        else:  # pragma: no cover - settings is always owned by MainWindow
+            logger.warning("Tutorial requested but the owner has no play_tutorial()")
 
     # ── setup ────────────────────────────────────────────────────────────────
 
