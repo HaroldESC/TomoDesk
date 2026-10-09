@@ -59,7 +59,7 @@ class TestInitWorker:
             raise ValueError("Invalid LLM endpoint")
 
         monkeypatch.setattr(main, "_initialize", _boom)
-        worker = main._InitWorker({"llm": {}})
+        worker = main._build_init_worker_class()({"llm": {}})
         received = []
         worker.error.connect(received.append)
         worker.finished.connect(lambda deps: received.append(("finished", deps)))
@@ -72,7 +72,7 @@ class TestInitWorker:
         import main
 
         monkeypatch.setattr(main, "_initialize", lambda cfg: {"ok": True})
-        worker = main._InitWorker({"llm": {}})
+        worker = main._build_init_worker_class()({"llm": {}})
         errors = []
         done = []
         worker.error.connect(errors.append)
@@ -87,7 +87,7 @@ class TestInitWorker:
         import main
 
         monkeypatch.setattr(main, "_initialize", lambda cfg: 1 / 0)
-        worker = main._InitWorker({"llm": {}})
+        worker = main._build_init_worker_class()({"llm": {}})
         events = []
         worker.finished.connect(lambda d: events.append("finished"))
         worker.error.connect(lambda m: events.append("error"))

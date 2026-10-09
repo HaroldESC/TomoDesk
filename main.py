@@ -9,7 +9,6 @@ from pathlib import Path
 
 os.environ["QT_LOGGING_RULES"] = "qt.qpa.window=false"
 
-from PySide6.QtCore import Qt, QTimer, QThread, Signal
 from concurrent.futures import ThreadPoolExecutor
 
 from src.config import paths
@@ -315,22 +314,32 @@ def _show_splash():
     return splash
 
 
-class _InitWorker(QThread):
-    finished = Signal(dict)
-    error = Signal(str)
+def _build_init_worker_class():
+    """QThread de inicializacion, construido solo cuando hay GUI.
 
-    def __init__(self, config, parent=None):
-        super().__init__(parent)
-        self._config = config
+    Importar PySide6 a nivel de modulo impediria ejecutar el modo CLI en
+    un equipo sin stack grafico.
+    """
+    from PySide6.QtCore import QThread, Signal
 
-    def run(self):
-        try:
-            deps = _initialize(self._config)
-        except Exception as e:
-            logger.exception("Initialization failed")
-            self.error.emit(str(e))
-            return
-        self.finished.emit(deps)
+    class _InitWorker(QThread):
+        finished = Signal(dict)
+        error = Signal(str)
+
+        def __init__(self, config, parent=None):
+            super().__init__(parent)
+            self._config = config
+
+        def run(self):
+            try:
+                deps = _initialize(self._config)
+            except Exception as e:
+                logger.exception("Initialization failed")
+                self.error.emit(str(e))
+                return
+            self.finished.emit(deps)
+
+    return _InitWorker
 
 
 def run_gui(config):
@@ -341,7 +350,7 @@ def run_gui(config):
         return
 
     from PySide6.QtWidgets import QApplication
-    from PySide6.QtCore import QTimer
+    from PySide6.QtCore import Qt, QTimer
     from PySide6.QtGui import QIcon
 
     app = QApplication(sys.argv)
@@ -539,7 +548,7 @@ def run_gui(config):
 
         deps["proactive_engine"].handle_trigger("session_start")
 
-    worker = _InitWorker(config)
+    worker = _build_init_worker_class()(config)
     worker.finished.connect(_on_init_complete)
     worker.error.connect(_on_init_error)
     worker.start()
