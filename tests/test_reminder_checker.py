@@ -56,3 +56,47 @@ def test_stop_returns_quickly_while_thread_sleeping(memory_manager):
 
     assert checker.is_running is False
     assert elapsed < 0.5
+
+
+def test_due_reminder_is_not_consumed_without_callback(memory_manager):
+    """Sin callback el recordatorio debe seguir pendiente.
+
+    Regresion: el checker desactivaba el recordatorio pese a no haberlo
+    entregado, asi que desaparecia sin mostrarse nunca.
+    """
+    trigger_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    memory_manager.add_reminder("Undelivered", trigger_time)
+
+    checker = ReminderChecker(memory_manager, {}, check_interval=0.1)
+    checker.start()
+    time.sleep(0.35)
+    still_running = checker.is_running
+    checker.stop()
+
+    assert still_running is True
+    reminders = memory_manager.list_reminders()
+    assert [r["message"] for r in reminders] == ["Undelivered"]
+    # No se registro como disparado en el log de interacciones.
+    logged = [
+        e for e in memory_manager.list_episodic_log()
+        if e.get("source") == "reminder_triggered"
+    ]
+    assert logged == []
+
+
+def test_reminder_is_delivered_after_callback_is_wired_late(memory_manager):
+    """El recordatorio se entrega en cuanto haya callback, no se pierde."""
+    trigger_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    memory_manager.add_reminder("Late wiring", trigger_time)
+
+    checker = ReminderChecker(memory_manager, {}, check_interval=0.1)
+    checker.start()
+    time.sleep(0.25)  # ciclos sin callback
+
+    calls = []
+    checker.set_callback(lambda msg: calls.append(msg))
+    time.sleep(0.35)
+    checker.stop()
+
+    assert calls == ["Late wiring"]
+    assert memory_manager.list_reminders() == []

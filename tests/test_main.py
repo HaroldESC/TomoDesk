@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from unittest.mock import MagicMock
 
 from main import _init_pack_manager
 
@@ -117,3 +118,50 @@ class TestProviderLabel:
         import main
 
         assert main._provider_label({"llm": {"provider": "weird"}}) == "weird"
+
+
+class TestBackgroundMonitorStartup:
+    """Los monitores deben arrancar ya con sus callbacks asignados."""
+
+    def test_monitors_start_only_after_callbacks_are_wired(self):
+        import main
+
+        order = []
+
+        class _Monitor:
+            def __init__(self, name):
+                self.name = name
+
+            def set_trigger_callback(self, _cb):
+                order.append(f"{self.name}:callback")
+
+            def start(self):
+                order.append(f"{self.name}:start")
+
+        deps = {
+            "event_monitor": _Monitor("events"),
+            "reminder_checker": _Monitor("reminders"),
+        }
+        for name in ("event_monitor", "reminder_checker"):
+            deps[name].set_trigger_callback(lambda *a: None)
+        main._start_background_monitors(deps)
+
+        assert order == ["events:callback", "reminders:callback",
+                         "events:start", "reminders:start"]
+
+    def test_start_background_monitors_starts_both(self):
+        import main
+
+        deps = {
+            "event_monitor": MagicMock(),
+            "reminder_checker": MagicMock(),
+        }
+        main._start_background_monitors(deps)
+        deps["event_monitor"].start.assert_called_once_with()
+        deps["reminder_checker"].start.assert_called_once_with()
+
+    def test_start_background_monitors_tolerates_missing_services(self):
+        import main
+
+        main._start_background_monitors({})  # must not raise
+        main._start_background_monitors({"event_monitor": None})

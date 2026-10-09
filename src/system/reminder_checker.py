@@ -42,6 +42,14 @@ class ReminderChecker:
     def _run_loop(self):
         while not self._stop_event.is_set():
             try:
+                if self._on_reminder_callback is None:
+                    # Sin nadie que lo entregue no se consume el recordatorio:
+                    # si se desactivara aqui, se marcaria como visto sin mos
+                    # trarse nunca. Queda pendiente para el siguiente ciclo.
+                    logger.debug("ReminderChecker has no callback yet; skipping cycle")
+                    self._stop_event.wait(self.check_interval)
+                    continue
+
                 due_reminders = self.memory_manager.get_due_reminders()
                 for reminder in due_reminders:
                     logger.info(

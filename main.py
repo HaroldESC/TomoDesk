@@ -72,14 +72,14 @@ def _init_event_monitor(memory_manager, config, state_manager):
     from src.core.events import EventMonitor
     em = EventMonitor(memory_manager, config, poll_interval=2.0)
     em.set_state_manager(state_manager)
-    em.start()
+    # start() lo invoca _start_background_monitors cuando todo esta cableado
     return em
 
 
 def _init_reminder_checker(memory_manager, config):
     from src.system.reminder_checker import ReminderChecker
     rc = ReminderChecker(memory_manager, config, check_interval=30.0)
-    rc.start()
+    # start() lo invoca _start_background_monitors cuando todo esta cableado
     return rc
 
 
@@ -165,7 +165,22 @@ def _initialize(config):
         "i18n": i18n,
     }
     _validate_run_deps(deps)
+
+    # Los monitores arrancan al final: si lo hicieran antes, sus hilos
+    # dispararian triggers y recordatorios sin callback asignado (eventos
+    # descartados en silencio y recordatorios marcados como vistos sin
+    # entregarse). Ver _start_background_monitors.
+    _start_background_monitors(deps)
+
     return deps
+
+
+def _start_background_monitors(deps: dict) -> None:
+    """Arranca event_monitor y reminder_checker ya con sus callbacks puestos."""
+    for name in ("event_monitor", "reminder_checker"):
+        service = deps.get(name)
+        if service is not None:
+            service.start()
 
 
 _REQUIRED_RUN_KEYS: set = {
