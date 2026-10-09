@@ -1,5 +1,6 @@
 import json
 import logging
+import threading
 import uuid
 from datetime import datetime
 from typing import Any, Dict, List
@@ -11,6 +12,13 @@ logger = logging.getLogger(__name__)
 
 
 class MemoryManager:
+    """Facade over the three memory tiers (short/mid/long term).
+
+    Short-term memory lives in a plain list and is touched from several
+    threads (GUI chat, overlay chat workers, event triggers), so every
+    mutation goes through ``_short_term_lock``.
+    """
+
     def __init__(
         self,
         db_manager: DatabaseManager,
@@ -22,23 +30,27 @@ class MemoryManager:
         self._config = config
         self._max_short_term = config["memory"].get("max_short_term_messages", 20)
         self.short_term_messages: List[Dict[str, str]] = []
+        self._short_term_lock = threading.Lock()
 
     # ── Short-term memory ──────────────────────────────────────────────
 
     def add_message(self, role: str, content: str) -> None:
-        self.short_term_messages.append(
-            {"role": role, "content": content, "timestamp": datetime.now().isoformat()}
-        )
-        if len(self.short_term_messages) > self._max_short_term:
-            self.short_term_messages.pop(0)
+        with self._short_term_lock:
+            self.short_term_messages.append(
+                {"role": role, "content": content, "timestamp": datetime.now().isoformat()}
+            )
+            while len(self.short_term_messages) > self._max_short_term:
+                self.short_term_messages.pop(0)
 
     def get_recent_messages(self, n: int | None = None) -> List[Dict[str, str]]:
-        if n is None:
-            return list(self.short_term_messages)
-        return self.short_term_messages[-n:]
+        with self._short_term_lock:
+            if n is None:
+                return list(self.short_term_messages)
+            return list(self.short_term_messages[-n:])
 
     def clear_short_term(self) -> None:
-        self.short_term_messages.clear()
+        with self._short_term_lock:
+            self.short_term_messages.clear()
 
     # ── Notes (SQLite) ─────────────────────────────────────────────────
 
@@ -309,3 +321,39 @@ class MemoryManager:
             logger.warning("Episodic memory %d has no chroma_id, skipping ChromaDB deletion", log_id)
 
         return True
+
+    # ── Maintenance (used by Settings) ─────────────────────────────────
+
+    def clear_all_memories(self) -> None:
+        """Wipe every stored memory: short-term, SQLite rows and ChromaDB.
+
+        Destructive by design; callers must confirm with the user first.
+        ChromaDB failures are logged but never abort the SQLite wipe, so
+        the user is not left with a half-cleared database.
+        """
+        with self._short_term_lock:
+            self.short_term_messages.clear()
+
+        for table in ("notes", "reminders", "interaction_log", "episodic_log"):
+            self._db.execute(f"DELETE FROM {table}")
+        self._db.commit()
+
+        try:
+            self._chroma.clear_all_collections()
+        except Exception:
+            logger.exception("Failed to clear ChromaDB collections")
+
+        logger.info("All memories cleared (SQLite tables + ChromaDB collections)")
+
+    def reindex_notes(self) -> int:
+        """Rebuild the notes embedding collection from the SQLite rows.
+
+        Returns the number of notes indexed. Used after a ChromaDB
+        corruption or an embedding-model change.
+        """
+        self._chroma.clear_collection("notes_index")
+        notes = self.list_notes()
+        for note in notes:
+            self._index_note(note["id"], note["title"], note["content"] or "")
+        logger.info("Reindexed %d notes", len(notes))
+        return len(notes)

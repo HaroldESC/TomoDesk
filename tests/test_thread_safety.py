@@ -208,3 +208,98 @@ def test_proactive_policy_focus_during_checks():
     t2.join()
 
     assert not errors, f"Policy focus toggle errors: {errors}"
+
+
+# ── MemoryManager short-term memory ────────────────────────────────────
+
+
+def _memory_manager(tmp_path, max_short_term: int = 20) -> "MemoryManager":
+    from src.memory.chroma_manager import ChromaManager
+    from src.memory.memory import MemoryManager
+
+    db = DatabaseManager(tmp_path / "short_term.db")
+    db.initialize()
+    chroma = ChromaManager(tmp_path / "chroma", "all-MiniLM-L6-v2")
+    return MemoryManager(db, chroma, {"memory": {"max_short_term_messages": max_short_term}})
+
+
+def test_short_term_memory_concurrent_add(tmp_path):
+    """Concurrent writers must never exceed the window nor lose messages."""
+    mm = _memory_manager(tmp_path, max_short_term=5)
+    N, per_thread = 20, 50
+    errors = []
+
+    def worker(tid: int) -> None:
+        try:
+            for i in range(per_thread):
+                mm.add_message("user", f"t{tid}-m{i}")
+                mm.get_recent_messages(3)
+        except Exception as e:  # pragma: no cover - only on a real race
+            errors.append(e)
+
+    threads = [threading.Thread(target=worker, args=(t,)) for t in range(N)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors, f"Short-term memory errors: {errors}"
+    # The ring buffer must stay bounded even under contention.
+    assert len(mm.short_term_messages) == 5
+    recent = mm.get_recent_messages()
+    assert len(recent) == 5
+    # Latest message must be the last one appended by the last finishing
+    # thread, and the window must be strictly ordered by insertion.
+    roles = {m["role"] for m in recent}
+    assert roles == {"user"}
+
+
+def test_short_term_memory_concurrent_clear_during_writes(tmp_path):
+    """clear_short_term racing with add_message must not raise nor corrupt."""
+    mm = _memory_manager(tmp_path, max_short_term=10)
+    errors = []
+
+    def writer(tid: int) -> None:
+        try:
+            for i in range(200):
+                mm.add_message("user", f"t{tid}-m{i}")
+        except Exception as e:  # pragma: no cover - only on a real race
+            errors.append(e)
+
+    def clearer() -> None:
+        try:
+            for _ in range(50):
+                mm.clear_short_term()
+                time.sleep(0.001)
+        except Exception as e:  # pragma: no cover - only on a real race
+            errors.append(e)
+
+    def reader() -> None:
+        try:
+            for _ in range(100):
+                # A snapshot must never be a partially-mutated list.
+                snapshot = mm.get_recent_messages()
+                assert len(snapshot) <= 10
+        except Exception as e:  # pragma: no cover - only on a real race
+            errors.append(e)
+
+    threads = [threading.Thread(target=writer, args=(t,)) for t in range(4)]
+    threads.append(threading.Thread(target=clearer))
+    threads.append(threading.Thread(target=reader))
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors, f"Short-term clear/write errors: {errors}"
+    assert len(mm.short_term_messages) <= 10
+
+
+def test_short_term_memory_max_enforced(tmp_path):
+    """The window is enforced even when the limit is passed several times over."""
+    mm = _memory_manager(tmp_path, max_short_term=3)
+    for i in range(10):
+        mm.add_message("user", f"m{i}")
+
+    messages = mm.get_recent_messages()
+    assert [m["content"] for m in messages] == ["m7", "m8", "m9"]
