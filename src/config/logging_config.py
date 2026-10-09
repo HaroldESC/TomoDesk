@@ -40,13 +40,21 @@ class SensitiveDataFilter(logging.Filter):
         return True
 
 
-def _add_redaction_filter(root_logger: logging.Logger) -> None:
-    has_filter = any(
-        isinstance(f, SensitiveDataFilter)
-        for f in root_logger.filters
-    )
-    if not has_filter:
-        root_logger.addFilter(SensitiveDataFilter())
+def _add_redaction_filter(*handlers: logging.Handler) -> None:
+    """Adjunta ``SensitiveDataFilter`` a los handlers dados (idempotente).
+
+    El filtro debe vivir en los handlers y no en los loggers: un filtro de
+    logger solo ve los registros emitidos en ese logger, mientras que los
+    registros propagados desde loggers hijos (``logging.getLogger(__name__)``)
+    lo ignorarían y saldrían sin redactar.
+    """
+    for handler in handlers:
+        has_filter = any(
+            isinstance(f, SensitiveDataFilter)
+            for f in handler.filters
+        )
+        if not has_filter:
+            handler.addFilter(SensitiveDataFilter())
 
 
 def setup_logging(log_dir: Path | None = None) -> None:
@@ -65,12 +73,16 @@ def setup_logging(log_dir: Path | None = None) -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG)
+    handlers: list[logging.Handler] = []
+
     try:
         file_handler = logging.FileHandler(log_file, encoding="utf-8")
         file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(formatter)
-        root_logger = logging.getLogger()
         root_logger.addHandler(file_handler)
+        handlers.append(file_handler)
     except (PermissionError, OSError):
         pass
 
@@ -78,8 +90,7 @@ def setup_logging(log_dir: Path | None = None) -> None:
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(formatter)
 
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG)
     root_logger.addHandler(console_handler)
+    handlers.append(console_handler)
 
-    _add_redaction_filter(root_logger)
+    _add_redaction_filter(*handlers)
