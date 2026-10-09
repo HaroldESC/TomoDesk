@@ -18,6 +18,19 @@ _MAX_CONTENT_HEIGHT = 150
 class BubbleStyle(Enum):
     DARK  = "dark"
     COMIC = "comic"
+    FLAT  = "flat"
+    ROUND = "round"
+
+
+# Visual recipe per style: (bg, border, border_width, text, font_weight, radius)
+_STYLE_RECIPES: dict[BubbleStyle, tuple] = {
+    BubbleStyle.DARK:  (QColor(30, 30, 46),  QColor(49, 50, 68),  1.5, "#cdd6f4", "400", 12.0),
+    BubbleStyle.COMIC: (QColor(255, 255, 255), QColor(30, 30, 48), 2.5, "#1E1E30", "600", 12.0),
+    BubbleStyle.FLAT:  (QColor(245, 246, 250), QColor(205, 210, 222), 1.0, "#22242C", "400", 4.0),
+    BubbleStyle.ROUND: (QColor(252, 252, 255), QColor(198, 202, 220), 1.5, "#23252E", "400", 20.0),
+}
+
+_STYLE_NAMES = frozenset(s.value for s in _STYLE_RECIPES)
 
 
 class SpeechBubble(QWidget):
@@ -31,7 +44,10 @@ class SpeechBubble(QWidget):
                  max_lines: int = 5, fade_delay_ms: int = 4000,
                  typewriter_interval_ms: int = 30, i18n=None):
         super().__init__(parent)
-        self.style = BubbleStyle(style)
+        # Unknown styles fall back to DARK instead of raising, so a stale
+        # config value cannot take the whole app down at startup.
+        self.style = BubbleStyle(style) if style in _STYLE_NAMES else BubbleStyle.DARK
+        self._radius: float = _STYLE_RECIPES[self.style][5]
         self._drag_pos = None
         self._drag_active = False
         self._full_text = ""
@@ -98,22 +114,32 @@ class SpeechBubble(QWidget):
         self.setMaximumWidth(dynamic_max)
 
     def _apply_style(self):
-        if self.style == BubbleStyle.DARK:
-            self._bg_color     = QColor(30, 30, 46)
-            self._border_color = QColor(49, 50, 68)
-            self._border_width = 1.5
-            text_color   = "#cdd6f4"
-            font_weight  = "400"
-        else:
-            self._bg_color     = QColor(255, 255, 255)
-            self._border_color = QColor(30, 30, 48)
-            self._border_width = 2.5
-            text_color   = "#1E1E30"
-            font_weight  = "600"
+        recipe = _STYLE_RECIPES.get(self.style, _STYLE_RECIPES[BubbleStyle.DARK])
+        (
+            self._bg_color,
+            self._border_color,
+            self._border_width,
+            text_color,
+            font_weight,
+            self._radius,
+        ) = recipe
 
-        input_bg   = "#2B2B3D" if self.style == BubbleStyle.DARK else "#F0F0F8"
-        input_txt  = "#cdd6f4" if self.style == BubbleStyle.DARK else "#1E1E30"
-        input_bdr  = "#494A44" if self.style == BubbleStyle.DARK else "#1E1E30"
+        if self.style == BubbleStyle.DARK:
+            input_bg   = "#2B2B3D"
+            input_txt  = "#cdd6f4"
+            input_bdr  = "#494A44"
+        elif self.style == BubbleStyle.FLAT:
+            input_bg   = "#FFFFFF"
+            input_txt  = "#22242C"
+            input_bdr  = "#CDD2DE"
+        elif self.style == BubbleStyle.ROUND:
+            input_bg   = "#FFFFFF"
+            input_txt  = "#23252E"
+            input_bdr  = "#C6CADC"
+        else:
+            input_bg   = "#F0F0F8"
+            input_txt  = "#1E1E30"
+            input_bdr  = "#1E1E30"
 
         self.setStyleSheet(f"""
             QTextEdit {{
@@ -192,7 +218,9 @@ class SpeechBubble(QWidget):
     def _build_path(self) -> QPainterPath:
         w  = float(self.width())
         h  = float(self.height())
-        r  = 12.0
+        # Corner radius comes from the style recipe (flat is hard-edged,
+        # round is very soft); it is capped so it never eats the tail.
+        r  = min(self._radius, w / 2.0 - _TAIL_W / 2.0)
         cx = w / 2.0
 
         path = QPainterPath()

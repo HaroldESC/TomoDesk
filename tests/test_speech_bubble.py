@@ -192,3 +192,43 @@ def test_resized_signal(qapp, qtbot):
     with qtbot.waitSignal(bubble.resized, timeout=1000):
         bubble.resize(300, 100)
     bubble.hide_bubble()
+
+
+@pytest.mark.parametrize("style", ["dark", "comic", "flat", "round"])
+def test_every_style_constructs(qapp, style):
+    """The Settings combo can never offer a style the widget rejects."""
+    bubble = SpeechBubble(style=style)
+    assert bubble.style.value == style
+    assert bubble._radius > 0
+
+
+def test_flat_style_has_hard_corners(qapp):
+    from src.gui.widgets.speech_bubble import BubbleStyle
+    bubble = SpeechBubble(style="flat")
+    assert bubble._radius < 8
+    bubble.show_text("Hello", animate=False)
+    bubble.resize(200, 80)
+    path = bubble._build_path()
+    assert path is not None
+
+
+def test_round_style_has_soft_corners(qapp):
+    bubble = SpeechBubble(style="round")
+    assert bubble._radius > 15
+    bubble.resize(200, 80)
+    assert bubble._build_path() is not None
+
+
+def test_unknown_style_falls_back_to_dark(qapp):
+    """A stale config value must not crash the app at startup."""
+    bubble = SpeechBubble(style="does_not_exist")
+    assert bubble.style.value == "dark"
+    assert bubble._radius == 12.0
+
+
+def test_radius_never_exceeds_available_space(qapp):
+    from src.gui.widgets.speech_bubble import _TAIL_W
+    bubble = SpeechBubble(style="round")
+    bubble.resize(120, 60)  # narrow: radius must be capped
+    path = bubble._build_path()
+    assert path is not None
