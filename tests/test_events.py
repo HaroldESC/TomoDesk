@@ -158,3 +158,87 @@ class TestEventMonitor:
 
         assert monitor.is_running is False
         assert elapsed < 0.5
+
+
+class TestTriggerGuards:
+    """Los triggers por contexto se disparan una sola vez, no en cada poll."""
+
+    def _make(self, window, **overrides):
+        snapshot = dict(SNAPSHOT, active_window=window, **overrides)
+        triggers = []
+        monitor = EventMonitor(MagicMock(), {})
+        monitor._trigger_callback = lambda t, p: triggers.append(t)
+        monitor._check_triggers(snapshot)
+        monitor._check_triggers(snapshot)
+        monitor._check_triggers(snapshot)
+        return triggers
+
+    def test_music_detected_fires_once_per_window(self):
+        triggers = self._make("Spotify Premium")
+        assert triggers.count("music_detected") == 1
+
+    def test_coding_detected_fires_once_per_window(self):
+        triggers = self._make("main.py - Visual Studio Code")
+        assert triggers.count("coding_detected") == 1
+
+    def test_switching_window_refires(self):
+        triggers = []
+        monitor = EventMonitor(MagicMock(), {})
+        monitor._trigger_callback = lambda t, p: triggers.append(t)
+        monitor._check_triggers(dict(SNAPSHOT, active_window="Spotify"))
+        monitor._check_triggers(dict(SNAPSHOT, active_window="Chrome"))
+        monitor._check_triggers(dict(SNAPSHOT, active_window="Spotify"))
+        assert triggers.count("music_detected") == 2
+
+    def test_late_night_fires_once_per_streak(self):
+        with patch("src.core.events.datetime") as dt:
+            dt.now.return_value = MagicMock(hour=23)
+            triggers = self._make("Chrome")
+        assert triggers.count("late_night") == 1
+
+    def test_resources_fire_once_until_they_drop(self):
+        triggers = self._make("Chrome", cpu_percent=95.0, ram_percent=95.0)
+        assert triggers.count("system_resources") == 1
+
+    def test_resources_refire_after_recovering(self):
+        triggers = []
+        monitor = EventMonitor(MagicMock(), {})
+        monitor._trigger_callback = lambda t, p: triggers.append(t)
+        monitor._check_triggers(dict(SNAPSHOT, cpu_percent=95.0))
+        monitor._check_triggers(dict(SNAPSHOT, cpu_percent=10.0))
+        monitor._check_triggers(dict(SNAPSHOT, cpu_percent=95.0))
+        assert triggers.count("system_resources") == 2
+
+
+class TestTriggerKeywords:
+    """Los terminos no deben coincidir con substrings genericos."""
+
+    def _matches(self, window):
+        from src.core.events import _CODING_TERMS, _MUSIC_TERMS, _matches_any
+
+        return (
+            _matches_any(window.lower(), _MUSIC_TERMS),
+            _matches_any(window.lower(), _CODING_TERMS),
+        )
+
+    def test_unicode_is_not_coding(self):
+        music, coding = self._matches("Unicode Character Table")
+        assert (music, coding) == (False, False)
+
+    def test_cmdline_is_not_coding(self):
+        music, coding = self._matches("build-cmdline-output.txt - Notepad")
+        assert coding is False
+
+    def test_music_substring_word_still_matches(self):
+        music, coding = self._matches("Apple Music")
+        assert music is True
+
+    def test_real_editors_match(self):
+        for title in ("Visual Studio Code", "vim", "Neovim", "PyCharm",
+                      "Terminal", "IntelliJ IDEA"):
+            _music, coding = self._matches(title)
+            assert coding is True, title
+
+    def test_spotify_matches_music(self):
+        music, _coding = self._matches("Spotify")
+        assert music is True

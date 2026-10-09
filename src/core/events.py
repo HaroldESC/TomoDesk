@@ -35,6 +35,35 @@ def _ram_percent() -> float:
         return 0.0
 
 
+# Terminos acotados a froneras de palabra para no disparar con substrings
+# genericos ("code" tambien coincide con "Unicode", "cmd" con "cmdline").
+_MUSIC_TERMS = ("spotify", "youtube music", "itunes", "music")
+_CODING_TERMS = (
+    "visual studio",
+    "visual studio code",
+    "vs code",
+    "vim",
+    "neovim",
+    "intellij",
+    "pycharm",
+    "terminal",
+    "command prompt",
+)
+
+
+def _matches_any(window_lower: str, terms: tuple[str, ...]) -> bool:
+    """Coincidencia por palabra completa (o prefijo de termino compuesto).
+
+    ``"cmd"`` ya no hace substring sobre ``"cmdline"`` y ``"code"`` no
+    coincide con ``"Unicode"``; si acaso, con ``"vs code"``.
+    """
+    padded = f" {window_lower} "
+    for term in terms:
+        if f" {term}" in padded:
+            return True
+    return False
+
+
 class SystemMonitor:
     def __init__(self, config=None):
         self._config = config
@@ -75,14 +104,19 @@ class EventMonitor:
         self._lock = Lock()
         self._last_window = None
         self._last_activity_time = time.time()
-        self._session_start_time = time.time()
         self._window_open_times: Dict[str, float] = {}
-        self._window_close_times: Dict[str, float] = {}
         self._app_switch_count = 0
         self._app_switch_window_start = time.time()
         self._first_app_today: set = set()
         self._trigger_callback = None
         self._state_manager = None
+
+        # Guardias de "ya disparado" para los triggers que antes saltaban en
+        # cada poll; ver _check_triggers.
+        self._last_music_window: str | None = None
+        self._last_coding_window: str | None = None
+        self._late_night_signaled = False
+        self._resources_triggered = False
 
         self._event_buffer: List[Tuple[str, Dict | None]] = []
         self._buffer_lock = Lock()
@@ -188,42 +222,48 @@ class EventMonitor:
             self._last_activity_time = current_time
 
         # --- App-specific detection ---
+        # Solo se dispara en la TRANSICION a una app de ese tipo: sin esta
+        # guardia el trigger salta en cada poll (~cada 2 s) mientras la
+        # ventana siga abierta.
         window_lower = current_window.lower()
-        if any(
-            term in window_lower
-            for term in ["spotify", "music", "youtube music"]
-        ):
-            self._trigger_callback("music_detected", {"window": current_window})
+        if _matches_any(window_lower, _MUSIC_TERMS):
+            if self._last_music_window != current_window:
+                self._trigger_callback("music_detected", {"window": current_window})
+            self._last_music_window = current_window
+        else:
+            self._last_music_window = None
 
-        if any(
-            term in window_lower
-            for term in [
-                "visual studio",
-                "code",
-                "vim",
-                "neovim",
-                "intellij",
-                "pycharm",
-                "terminal",
-                "cmd",
-            ]
-        ):
-            self._trigger_callback("coding_detected", {"window": current_window})
+        if _matches_any(window_lower, _CODING_TERMS):
+            if self._last_coding_window != current_window:
+                self._trigger_callback("coding_detected", {"window": current_window})
+            self._last_coding_window = current_window
+        else:
+            self._last_coding_window = None
 
         # --- Late night ---
+        # Una vez por franja nocturna (se resetea al salir de ella).
         hour = datetime.now().hour
-        if hour >= 23 or hour < 5:
+        is_late_night = hour >= 23 or hour < 5
+        if is_late_night and not self._late_night_signaled:
             self._trigger_callback("late_night", {"hour": hour})
+            self._late_night_signaled = True
+        elif not is_late_night:
+            self._late_night_signaled = False
 
         # --- System resources ---
+        # Cooldown: no repetir mientras no baje de los umbrales.
         cpu = snapshot.get("cpu_percent", 0)
         ram = snapshot.get("ram_percent", 0)
         if cpu > 80 or ram > 85:
-            self._trigger_callback("system_resources", {
-                "cpu": f"{cpu:.0f}",
-                "ram": f"{ram:.0f}",
-                "window": snapshot.get("active_window", "Unknown"),
-            })
+            if not self._resources_triggered:
+                self._trigger_callback("system_resources", {
+                    "cpu": f"{cpu:.0f}",
+                    "ram": f"{ram:.0f}",
+                    "window": snapshot.get("active_window", "Unknown"),
+                })
+                self._resources_triggered = True
+        else:
+            self._resources_triggered = False
 
         self._last_window = current_window
 
