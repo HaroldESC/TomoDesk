@@ -3,8 +3,6 @@ import random
 from pathlib import Path
 from typing import Dict, List, Optional
 
-import yaml
-
 logger = logging.getLogger(__name__)
 
 
@@ -35,6 +33,8 @@ class CommentLoader:
                 return
 
         with open(file_path, "r", encoding="utf-8") as f:
+            import yaml
+
             data = yaml.safe_load(f)
 
         if data is None:

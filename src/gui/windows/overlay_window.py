@@ -3,8 +3,6 @@ import logging
 import time
 from pathlib import Path
 
-import yaml
-
 from PySide6.QtCore import Qt, QPoint, QTimer, Signal, QPropertyAnimation, QEasingCurve, QRect
 from PySide6.QtGui import QPainter, QPaintEvent, QGuiApplication, QCursor, QWheelEvent
 from PySide6.QtWidgets import QWidget, QApplication, QMenu

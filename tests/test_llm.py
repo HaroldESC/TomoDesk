@@ -23,7 +23,7 @@ def test_create_unknown_provider():
 
 
 def test_generate_mocked(mocker):
-    mock_client = mocker.patch("src.llm.llm.ollama.Client")
+    mock_client = mocker.patch("ollama.Client")
     mock_client.return_value.chat.return_value = {
         "message": {"content": "Hello from mock!"}
     }
@@ -44,7 +44,7 @@ class _MockListResponse:
 
 
 def test_is_available_true(mocker):
-    mock_client = mocker.patch("src.llm.llm.ollama.Client")
+    mock_client = mocker.patch("ollama.Client")
     mock_client.return_value.list.return_value = _MockListResponse(
         [_MockModel("test-model:latest")]
     )
@@ -53,7 +53,7 @@ def test_is_available_true(mocker):
 
 
 def test_is_available_false(mocker):
-    mock_client = mocker.patch("src.llm.llm.ollama.Client")
+    mock_client = mocker.patch("ollama.Client")
     mock_client.return_value.list.return_value = _MockListResponse([])
     provider = OllamaProvider(model="test-model")
     assert provider.is_available() is False

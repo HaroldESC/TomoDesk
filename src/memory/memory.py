@@ -3,10 +3,11 @@ import logging
 import threading
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import TYPE_CHECKING, Any, Dict, List
 
-from src.memory.chroma_manager import ChromaManager
-from src.memory.database import DatabaseManager
+if TYPE_CHECKING:  # avoids importing chromadb through this module
+    from src.memory.chroma_manager import ChromaManager
+    from src.memory.database import DatabaseManager
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +22,8 @@ class MemoryManager:
 
     def __init__(
         self,
-        db_manager: DatabaseManager,
-        chroma_manager: ChromaManager,
+        db_manager: "DatabaseManager",
+        chroma_manager: "ChromaManager",
         config: dict,
     ):
         self._db = db_manager

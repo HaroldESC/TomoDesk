@@ -1,7 +1,6 @@
 import json
 import logging
 import re
-import yaml
 import zipfile
 from pathlib import Path
 from typing import Optional, Dict, Any, List
@@ -57,6 +56,8 @@ def _read_json(path: Path) -> Optional[dict]:
 
 def _read_yaml(path: Path) -> Optional[dict]:
     try:
+        import yaml
+
         with open(path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
         return data if isinstance(data, dict) else None
@@ -138,6 +139,8 @@ class PersonalityPackManager:
             logger.warning(f"Rejected unsafe ZIP pack: {zip_path}")
             return
         try:
+            import yaml
+
             with zipfile.ZipFile(zip_path, "r") as zf:
                 names = zf.namelist()
                 if MANIFEST_NAME in names:

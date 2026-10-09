@@ -5,8 +5,6 @@ from datetime import datetime
 from threading import Lock
 from typing import Dict, List, Tuple
 
-import psutil
-
 from src.platform import get_platform
 
 logger = logging.getLogger(__name__)
@@ -17,10 +15,29 @@ def _get_idle_time_ms() -> int:
     return get_platform().get_idle_time_ms()
 
 
+def _cpu_percent() -> float:
+    """CPU percentage; 0.0 when psutil is missing (never raises)."""
+    try:
+        import psutil
+
+        return round(psutil.cpu_percent(interval=0), 1)
+    except Exception:
+        return 0.0
+
+
+def _ram_percent() -> float:
+    """RAM percentage; 0.0 when psutil is missing (never raises)."""
+    try:
+        import psutil
+
+        return round(psutil.virtual_memory().percent, 1)
+    except Exception:
+        return 0.0
+
+
 class SystemMonitor:
     def __init__(self, config=None):
         self._config = config
-        psutil.cpu_percent(interval=None)
 
     def poll(self) -> Dict:
         enabled = True
@@ -40,8 +57,8 @@ class SystemMonitor:
             "timestamp": datetime.now().isoformat(),
             "active_window": active_window,
             "idle_time_seconds": idle_ms // 1000,
-            "cpu_percent": round(psutil.cpu_percent(interval=0), 1),
-            "ram_percent": round(psutil.virtual_memory().percent, 1),
+            "cpu_percent": _cpu_percent(),
+            "ram_percent": _ram_percent(),
         }
 
 

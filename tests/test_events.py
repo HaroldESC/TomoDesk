@@ -30,8 +30,8 @@ class TestSystemMonitor:
     @pytest.fixture(autouse=True)
     def _mock_os(self, adapter):
         with patch("src.core.events.get_platform", return_value=adapter):
-            with patch("src.core.events.psutil.cpu_percent", return_value=25.0):
-                with patch("src.core.events.psutil.virtual_memory") as vm:
+            with patch("psutil.cpu_percent", return_value=25.0):
+                with patch("psutil.virtual_memory") as vm:
                     vm.return_value.percent = 45.0
                     yield
 

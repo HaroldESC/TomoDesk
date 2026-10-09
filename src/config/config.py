@@ -5,7 +5,6 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from dotenv import load_dotenv
-import yaml
 
 from src.config.credentials import CredentialManager
 from src.config.paths import (
@@ -138,6 +137,8 @@ def save_config(config: dict, path: Path | None = None) -> None:
     if path is None:
         path = get_config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
+    import yaml
+
     safe = _strip_sensitive(config)
     tmp = path.with_suffix(".tmp")
     with open(tmp, "w", encoding="utf-8") as f:
@@ -180,6 +181,8 @@ def load_config(config_path: Path | None = None) -> dict:
             )
 
     with open(config_path, "r", encoding="utf-8") as f:
+        import yaml
+
         config = yaml.safe_load(f) or {}
     secure_file(config_path)
 

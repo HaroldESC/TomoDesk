@@ -16,11 +16,11 @@ logging.getLogger("chromadb.telemetry").setLevel(logging.ERROR)
 logging.getLogger("onnxruntime").setLevel(logging.ERROR)
 
 from pathlib import Path
-from typing import Any, List
+from typing import TYPE_CHECKING, Any, List
 
-import chromadb
-from chromadb import Collection
-from chromadb.config import Settings
+if TYPE_CHECKING:  # imported lazily: chromadb is heavy and optional
+    import chromadb
+    from chromadb import Collection
 
 
 _DEFAULT_EMBEDDING_CACHE_SIZE = 1000
@@ -237,6 +237,9 @@ class ChromaManager:
 
     def initialize(self) -> None:
         try:
+            import chromadb
+            from chromadb.config import Settings
+
             self._suppress_telemetry()
             self._persist_path.mkdir(parents=True, exist_ok=True)
             self._embedding_function = _ONNXEmbedding(

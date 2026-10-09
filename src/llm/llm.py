@@ -2,8 +2,6 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Dict, Generator, List
 
-import ollama
-
 logger = logging.getLogger(__name__)
 
 
@@ -42,6 +40,20 @@ class LLMProvider(ABC):
 
 
 class OllamaProvider(LLMProvider):
+    @staticmethod
+    def _ollama_response_error() -> tuple[type[BaseException], ...]:
+        """Error type raised by the ollama client, imported on demand.
+
+        Returns an empty tuple when the client is unavailable so the
+        ``except`` clause never raises a NameError at import time.
+        """
+        try:
+            import ollama
+
+            return (ollama.ResponseError,)
+        except Exception:
+            return ()
+
     def __init__(
         self,
         model: str,
@@ -49,6 +61,8 @@ class OllamaProvider(LLMProvider):
         max_requests_per_minute: int = 60,
     ):
         super().__init__(max_requests_per_minute)
+        import ollama
+
         self.model = model
         self._endpoint = endpoint
         self._client = ollama.Client(host=endpoint)
@@ -60,7 +74,7 @@ class OllamaProvider(LLMProvider):
                 model=self.model, messages=messages, stream=False
             )
             return response["message"]["content"]
-        except ollama.ResponseError:
+        except self._ollama_response_error():
             logger.error("Ollama ResponseError while generating")
             raise LLMError("Could not reach Ollama. Is it running?")
         except ConnectionError:
@@ -80,7 +94,7 @@ class OllamaProvider(LLMProvider):
             )
             for chunk in stream:
                 yield chunk["message"]["content"]
-        except ollama.ResponseError:
+        except self._ollama_response_error():
             logger.error("Ollama ResponseError during stream")
             raise LLMError("Could not reach Ollama. Is it running?")
         except ConnectionError:
