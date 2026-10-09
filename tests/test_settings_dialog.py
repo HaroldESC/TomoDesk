@@ -36,6 +36,7 @@ def inject_platform():
             "taskbar_detection": True,
             "taskbar_entry": True,
             "open_path": True,
+            "screen_geometry": True,
         }
         values.update(overrides)
         adapter = MagicMock()

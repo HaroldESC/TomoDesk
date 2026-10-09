@@ -26,6 +26,27 @@ _ABS_AUTOHIDE = 0x00000001
 _CREATE_NO_WINDOW = 0x08000000
 _DETACHED_PROCESS = 0x00000008
 
+_MONITOR_DEFAULTTONEAREST = 0x00000002
+_MONITORINFOF_PRIMARY = 0x00000001
+
+
+class _RECT(ctypes.Structure):
+    _fields_ = [
+        ("left", ctypes.c_long),
+        ("top", ctypes.c_long),
+        ("right", ctypes.c_long),
+        ("bottom", ctypes.c_long),
+    ]
+
+
+class _MONITORINFO(ctypes.Structure):
+    _fields_ = [
+        ("cbSize", ctypes.wintypes.DWORD),
+        ("rcMonitor", _RECT),
+        ("rcWork", _RECT),
+        ("dwFlags", ctypes.wintypes.DWORD),
+    ]
+
 
 class _LASTINPUTINFO(ctypes.Structure):
     _fields_ = [("cbSize", ctypes.wintypes.UINT), ("dwTime", ctypes.wintypes.DWORD)]
@@ -56,6 +77,7 @@ class WindowsAdapter(PlatformAdapter):
             taskbar_detection=True,
             taskbar_entry=True,
             open_path=True,
+            screen_geometry=True,
         )
 
     @staticmethod
@@ -187,3 +209,72 @@ class WindowsAdapter(PlatformAdapter):
         if sys.platform == "win32":
             return _CREATE_NO_WINDOW | _DETACHED_PROCESS
         return 0
+
+    # ── Screen geometry ────────────────────────────────────────────────
+
+    def _monitor_geometry(self, hmonitor) -> Optional[tuple[int, int, int, int]]:
+        """Read (x, y, w, h) from a monitor handle; None on failure."""
+        if not hmonitor:
+            return None
+        info = _MONITORINFO()
+        info.cbSize = ctypes.sizeof(_MONITORINFO)
+        if not ctypes.windll.user32.GetMonitorInfoW(hmonitor, ctypes.byref(info)):
+            return None
+        rect = info.rcMonitor
+        return (
+            int(rect.left),
+            int(rect.top),
+            int(rect.right - rect.left),
+            int(rect.bottom - rect.top),
+        )
+
+    def primary_screen_geometry(self) -> Optional[tuple[int, int, int, int]]:
+        """Geometry of the primary monitor via GetMonitorInfoW.
+
+        Enumerates the monitors and keeps the one flagged PRIMARY; degraded
+        value: None.
+        """
+        try:
+            found: list[Optional[tuple[int, int, int, int]]] = []
+
+            @ctypes.WINFUNCTYPE(
+                ctypes.wintypes.BOOL,
+                ctypes.wintypes.HMONITOR,
+                ctypes.wintypes.HDC,
+                ctypes.POINTER(_RECT),
+                ctypes.wintypes.LPARAM,
+            )
+            def _callback(hmonitor, _hdc, _rect, _data):
+                info = _MONITORINFO()
+                info.cbSize = ctypes.sizeof(_MONITORINFO)
+                if ctypes.windll.user32.GetMonitorInfoW(
+                    hmonitor, ctypes.byref(info)
+                ) and (info.dwFlags & _MONITORINFOF_PRIMARY):
+                    found.append(self._monitor_geometry(hmonitor))
+                return True
+
+            ctypes.windll.user32.EnumDisplayMonitors(
+                None, None, _callback, 0
+            )
+            return found[0] if found else None
+        except Exception:
+            logger.debug("primary_screen_geometry failed", exc_info=True)
+            return None
+
+    def screen_geometry_for_point(
+        self, x: int, y: int
+    ) -> Optional[tuple[int, int, int, int]]:
+        """Geometry of the monitor containing (x, y) via MonitorFromPoint.
+
+        Degraded value: None. Used to resolve the screen of a window on
+        offset multi-monitor layouts.
+        """
+        try:
+            point = ctypes.wintypes.POINT(int(x), int(y))
+            hmonitor = ctypes.windll.user32.MonitorFromPoint(
+                point, _MONITOR_DEFAULTTONEAREST
+            )
+            return self._monitor_geometry(hmonitor)
+        except Exception:
+            logger.debug("screen_geometry_for_point failed", exc_info=True)
+            return None

@@ -31,6 +31,7 @@ class NullAdapter(PlatformAdapter):
             taskbar_detection=False,
             taskbar_entry=False,
             open_path=True,
+            screen_geometry=False,
         )
 
     def get_active_window(self) -> Optional[WindowInfo]:
@@ -70,3 +71,13 @@ class NullAdapter(PlatformAdapter):
     def popen_creationflags(self) -> int:
         """No creationflags outside Windows; degraded value: 0."""
         return 0
+
+    def primary_screen_geometry(self) -> Optional[tuple[int, int, int, int]]:
+        """Screen geometry unknown here; degraded value: a conventional size."""
+        return (0, 0, 1920, 1080)
+
+    def screen_geometry_for_point(
+        self, x: int, y: int
+    ) -> Optional[tuple[int, int, int, int]]:
+        """Screen geometry unknown here; degraded value: a conventional size."""
+        return (0, 0, 1920, 1080)

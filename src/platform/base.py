@@ -28,6 +28,7 @@ class PlatformCapabilities:
     taskbar_detection: bool
     taskbar_entry: bool
     open_path: bool
+    screen_geometry: bool
 
 
 class PlatformAdapter(ABC):
@@ -69,3 +70,13 @@ class PlatformAdapter(ABC):
     @abstractmethod
     def popen_creationflags(self) -> int:
         """creationflags for subprocess.Popen; degraded value: 0."""
+
+    @abstractmethod
+    def primary_screen_geometry(self) -> Optional[tuple[int, int, int, int]]:
+        """Geometry (x, y, w, h) of the primary screen; degraded value: None."""
+
+    @abstractmethod
+    def screen_geometry_for_point(
+        self, x: int, y: int
+    ) -> Optional[tuple[int, int, int, int]]:
+        """Geometry of the screen containing (x, y); degraded value: None."""

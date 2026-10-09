@@ -83,6 +83,12 @@ class TestNullAdapter:
         assert caps.taskbar_detection is False
         assert caps.taskbar_entry is False
         assert caps.open_path is True
+        assert caps.screen_geometry is False
+
+    def test_screen_geometry_fallback(self):
+        adapter = NullAdapter()
+        assert adapter.primary_screen_geometry() == (0, 0, 1920, 1080)
+        assert adapter.screen_geometry_for_point(10, 10) == (0, 0, 1920, 1080)
 
     def test_is_platform_adapter(self):
         assert isinstance(NullAdapter(), PlatformAdapter)
@@ -126,6 +132,7 @@ class TestWindowsAdapterBasics:
         assert caps.taskbar_detection is True
         assert caps.taskbar_entry is True
         assert caps.open_path is True
+        assert caps.screen_geometry is True
 
     def test_capabilities_without_pywindow(self):
         with patch("src.platform.windows.gw", None):
@@ -395,3 +402,35 @@ class TestPlatformFactory:
         adapter = get_platform()
         assert adapter is not fake
         assert isinstance(adapter, PlatformAdapter)
+
+
+@requires_windows_adapter
+class TestWindowsScreenGeometry:
+    """Screen geometry comes from Win32, not from a Qt application."""
+
+    def test_primary_screen_geometry_returns_usable_rect(self):
+        adapter = WindowsAdapter()
+        geo = adapter.primary_screen_geometry()
+        assert geo is not None
+        x, y, w, h = geo
+        assert w > 0 and h > 0
+        assert (x, y) == (0, 0) or x < w  # no absurd values
+
+    def test_screen_geometry_for_point_near_origin(self):
+        adapter = WindowsAdapter()
+        geo = adapter.screen_geometry_for_point(0, 0)
+        assert geo is not None
+        assert geo[2] > 0 and geo[3] > 0
+
+    def test_point_outside_all_monitors_still_returns_a_screen(self):
+        adapter = WindowsAdapter()
+        geo = adapter.screen_geometry_for_point(-100000, -100000)
+        assert geo is not None
+
+    def test_never_raises_when_monitor_lookup_fails(self):
+        adapter = WindowsAdapter()
+        with patch("src.platform.windows.ctypes.windll") as windll:
+            windll.user32.MonitorFromPoint.return_value = None
+            windll.user32.GetMonitorInfoW.return_value = 0
+            assert adapter.screen_geometry_for_point(5, 5) is None
+            assert adapter.primary_screen_geometry() is None

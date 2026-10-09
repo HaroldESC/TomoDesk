@@ -4,11 +4,12 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional
 
-from PySide6.QtGui import QGuiApplication
-
 from src.platform import WindowInfo, get_platform
 
 logger = logging.getLogger(__name__)
+
+_FALLBACK_TASKBAR_HEIGHT = 40
+_AUTOHIDE_TASKBAR_HEIGHT = 5
 
 
 class WindowManager:
@@ -109,18 +110,25 @@ class WindowManager:
             return []
 
     def get_taskbar_geometry(self) -> Dict[str, int]:
-        """Geometria de la barra de tareas: autohide, por titulo o fallback."""
+        """Geometria de la barra de tareas: autohide, por titulo o fallback.
+
+        La geometria de pantalla la resuelve el adapter de plataforma, asi
+        esta fachada no depende de una GUI activa.
+        """
         try:
             if self._adapter.taskbar_is_autohide() is True:
-                screen = QGuiApplication.primaryScreen().geometry()
-                return {"x": screen.x(), "y": screen.y() + screen.height() - 5,
-                        "w": screen.width(), "h": 5}
+                screen = self._adapter.primary_screen_geometry()
+                if screen:
+                    x, y, _w, h = screen
+                    return {"x": x, "y": y + h - _AUTOHIDE_TASKBAR_HEIGHT,
+                            "w": screen[2], "h": _AUTOHIDE_TASKBAR_HEIGHT}
         except Exception:
-            pass
+            logger.debug("taskbar_is_autohide failed", exc_info=True)
         for win in self.get_all_windows():
             if "taskbar" in win["title"].lower():
                 x, y, w, h = win["bbox"]
                 return {"x": x, "y": y, "w": w, "h": h}
-        screen = QGuiApplication.primaryScreen().geometry()
-        return {"x": screen.x(), "y": screen.y() + screen.height() - 40,
-                "w": screen.width(), "h": 40}
+        screen = self._adapter.primary_screen_geometry() or (0, 0, 1920, 1080)
+        x, y, w, h = screen
+        return {"x": x, "y": y + h - _FALLBACK_TASKBAR_HEIGHT,
+                "w": w, "h": _FALLBACK_TASKBAR_HEIGHT}

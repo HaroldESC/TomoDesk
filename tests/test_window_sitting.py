@@ -17,11 +17,13 @@ class _FakeWindow:
 class _FakeAdapter:
     """Minimal PlatformAdapter stand-in for WindowManager tests."""
 
-    def __init__(self, active=None, all_windows=None, under_cursor=None, autohide=None):
+    def __init__(self, active=None, all_windows=None, under_cursor=None,
+                 autohide=None, screen=(0, 0, 1920, 1080)):
         self.active = active
         self.all_windows = list(all_windows or [])
         self.under_cursor = under_cursor
         self.autohide = autohide
+        self._screen = screen
 
     def get_active_window(self):
         return self.active
@@ -38,6 +40,12 @@ class _FakeAdapter:
     def taskbar_is_autohide(self):
         return self.autohide
 
+    def primary_screen_geometry(self):
+        return self._screen
+
+    def screen_geometry_for_point(self, x, y):
+        return self._screen
+
 
 def test_get_active_window_degraded_returns_none():
     wm = WindowManager(adapter=_FakeAdapter(active=None))
@@ -49,13 +57,13 @@ def test_get_all_windows_empty():
     assert wm.get_all_windows() == []
 
 
-def test_get_taskbar_geometry_no_pygetwindow(qapp):
+def test_get_taskbar_geometry_no_pygetwindow():
     wm = WindowManager(adapter=_FakeAdapter(autohide=None))
     geo = wm.get_taskbar_geometry()
     assert "x" in geo and "y" in geo and "w" in geo and "h" in geo
 
 
-def test_get_taskbar_geometry_finds_taskbar_window(qapp):
+def test_get_taskbar_geometry_finds_taskbar_window():
     adapter = _FakeAdapter(
         autohide=False,
         all_windows=[WindowInfo("Taskbar", (0, 1040, 1920, 40), None, False, False)],
@@ -64,12 +72,23 @@ def test_get_taskbar_geometry_finds_taskbar_window(qapp):
     assert geo == {"x": 0, "y": 1040, "w": 1920, "h": 40}
 
 
-def test_get_taskbar_geometry_autohide_strip(qapp):
-    adapter = _FakeAdapter(autohide=True, all_windows=[])
+def test_get_taskbar_geometry_autohide_strip():
+    adapter = _FakeAdapter(autohide=True, all_windows=[], screen=(0, 0, 2560, 1440))
     geo = WindowManager(adapter=adapter).get_taskbar_geometry()
-    assert geo["h"] == 5
-    screen = qapp.primaryScreen().geometry()
-    assert geo["y"] == screen.y() + screen.height() - 5
+    # 5px strip anchored to the bottom of the primary screen.
+    assert geo == {"x": 0, "y": 1435, "w": 2560, "h": 5}
+
+
+def test_get_taskbar_geometry_fallback_uses_screen_height():
+    adapter = _FakeAdapter(autohide=None, all_windows=[], screen=(100, 50, 1600, 900))
+    geo = WindowManager(adapter=adapter).get_taskbar_geometry()
+    assert geo == {"x": 100, "y": 910, "w": 1600, "h": 40}
+
+
+def test_get_taskbar_geometry_without_screen_info_uses_conventional_size():
+    adapter = _FakeAdapter(autohide=None, all_windows=[], screen=None)
+    geo = WindowManager(adapter=adapter).get_taskbar_geometry()
+    assert geo == {"x": 0, "y": 1040, "w": 1920, "h": 40}
 
 
 class TestWindowManagerState:
