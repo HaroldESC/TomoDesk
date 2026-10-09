@@ -208,7 +208,30 @@ def _check_provider(engine, state_manager, memory_manager, proactive_engine, rem
     return False
 
 
-def _graceful_shutdown(deps: dict) -> None:
+class _ShutdownState:
+    """One-shot flags for the shutdown work.
+
+    Kept out of ``deps`` on purpose: ``deps`` is validated against
+    ``_REQUIRED_RUN_KEYS`` and later splatted into ``MainWindow(**deps)``,
+    so extra keys would break the constructor.
+    """
+
+    __slots__ = ("summary_started", "prefs_saved")
+
+    def __init__(self) -> None:
+        self.summary_started = False
+        self.prefs_saved = False
+
+
+def _graceful_shutdown(deps: dict, state: _ShutdownState | None = None) -> None:
+    """Stop the background services and persist the emotional state.
+
+    Safe to call more than once: ``state`` guards the summary and the
+    preference save so a double shutdown does not repeat them.
+    """
+    if state is None:
+        state = _ShutdownState()
+
     stops = [
         ("proactive_engine", "stop_random_timer"),
         ("reminder_checker", "stop"),
@@ -222,8 +245,8 @@ def _graceful_shutdown(deps: dict) -> None:
             except Exception:
                 logger.exception("Failed to stop %s during shutdown", name)
 
-    if not deps.get("_summary_started"):
-        deps["_summary_started"] = True
+    if not state.summary_started:
+        state.summary_started = True
         engine = deps.get("engine")
         if engine is not None and hasattr(engine, "summarize_session"):
             summarize_thread = threading.Thread(
@@ -237,11 +260,11 @@ def _graceful_shutdown(deps: dict) -> None:
     if (
         state_manager is not None
         and memory_manager is not None
-        and not deps.get("_prefs_saved")
+        and not state.prefs_saved
     ):
         try:
             state_manager.save_to_preferences(memory_manager)
-            deps["_prefs_saved"] = True
+            state.prefs_saved = True
         except Exception:
             logger.exception("Failed to save preferences during shutdown")
 
@@ -279,13 +302,19 @@ def _show_splash():
 
 class _InitWorker(QThread):
     finished = Signal(dict)
+    error = Signal(str)
 
     def __init__(self, config, parent=None):
         super().__init__(parent)
         self._config = config
 
     def run(self):
-        deps = _initialize(self._config)
+        try:
+            deps = _initialize(self._config)
+        except Exception as e:
+            logger.exception("Initialization failed")
+            self.error.emit(str(e))
+            return
         self.finished.emit(deps)
 
 
@@ -314,6 +343,24 @@ def run_gui(config):
 
     _restart_pending = False
     deps_ref = {"deps": None}
+    shutdown_state = _ShutdownState()
+
+    def _on_init_error(message: str):
+        """Initialization blew up: close the splash and tell the user why."""
+        try:
+            splash.close()
+        except Exception:
+            logger.warning("Could not close splash after init error", exc_info=True)
+        logger.error(f"Initialization failed: {message}")
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.critical(
+            None,
+            "TomoDesk",
+            f"Could not start TomoDesk:\n\n{message}\n\n"
+            f"Check the logs for details.",
+        )
+        from PySide6.QtCore import QCoreApplication
+        QCoreApplication.quit()
 
     def _on_init_complete(deps):
         nonlocal _restart_pending
@@ -383,7 +430,7 @@ def run_gui(config):
         def restart_app():
             nonlocal _restart_pending
             _restart_pending = True
-            _graceful_shutdown(deps)
+            _graceful_shutdown(deps, shutdown_state)
             window._quit_on_close = True
             overlay.close()
             window.close()
@@ -421,7 +468,7 @@ def run_gui(config):
             QTimer.singleShot(100, window.activateWindow)
 
         def exit_app():
-            _graceful_shutdown(deps)
+            _graceful_shutdown(deps, shutdown_state)
             window._quit_on_close = True
             from PySide6.QtCore import QCoreApplication
             overlay.close()
@@ -479,6 +526,7 @@ def run_gui(config):
 
     worker = _InitWorker(config)
     worker.finished.connect(_on_init_complete)
+    worker.error.connect(_on_init_error)
     worker.start()
 
     app.setQuitOnLastWindowClosed(False)
@@ -488,7 +536,7 @@ def run_gui(config):
     if _restart_pending:
         _restart_process()
     if deps_ref["deps"] is not None:
-        _graceful_shutdown(deps_ref["deps"])
+        _graceful_shutdown(deps_ref["deps"], shutdown_state)
     _close_db()
     os._exit(ret)
 
