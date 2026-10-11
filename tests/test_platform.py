@@ -405,8 +405,13 @@ class TestPlatformFactory:
 
 
 @requires_windows_adapter
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-only behavior")
 class TestWindowsScreenGeometry:
-    """Screen geometry comes from Win32, not from a Qt application."""
+    """Screen geometry comes from Win32, not from a Qt application.
+
+    Unlike the mocked adapter classes, these tests call the real monitor
+    APIs, so they can only run on Windows.
+    """
 
     def test_primary_screen_geometry_returns_usable_rect(self):
         adapter = WindowsAdapter()
