@@ -6,24 +6,20 @@
     "model_license_note": "Chat models may carry their own licenses (e.g. Meta Llama 3.2 uses the Llama Community License, not MIT). See README for details."
   },
   "menu": {
-    "file": "&File",
-    "clear_chat": "&Clear Chat",
     "exit": "E&xit",
-    "memory": "&Memory",
     "notes": "&Notes...",
     "reminders": "&Reminders...",
     "episodic_memories": "&Episodic Memories...",
-    "show_mood": "Show &Mood",
     "settings": "&Settings",
-    "proactive_comments": "&Proactive Comments...",
     "focus_mode": "&Focus Mode",
-    "configuration": "&Configuration...",
     "restart": "&Restart",
-    "help": "&Help",
-    "about": "&About TomoDesk",
+    "help": {
+      "title": "Help",
+      "guide": "Interaction Guide",
+      "about": "About TomoDesk"
+    },
     "chat": "&Chat",
     "show_chat": "Show Chat",
-    "tools": "&Tools",
     "char": {
       "show_overlay": "Show/Hide Companion",
       "focus_mode": "Focus Mode",
@@ -35,11 +31,6 @@
       "notes": "Notes",
       "reminders": "Reminders",
       "episodic": "Episodic Memories"
-    },
-    "help": {
-      "title": "Help",
-      "guide": "Interaction Guide",
-      "about": "About TomoDesk"
     }
   },
   "chat": {
@@ -47,27 +38,13 @@
     "send_button": "Send",
     "thinking": "...",
     "error_prefix": "[Error: {error}]",
-    "clear_system_msg": "Chat cleared. Short-term memory reset.",
-    "mood_title": "Current emotional state:",
-    "mood_bar": "{var}: {bar} {value:.2f}",
-    "proactive_toggle_on": "Proactive comments enabled.",
-    "proactive_toggle_off": "Proactive comments disabled.",
-    "focus_mode_on": "Focus mode ACTIVATED.",
-    "focus_mode_off": "Focus mode DEACTIVATED.",
-    "reminder_prefix": "⏰ REMINDER: {message}",
-    "role_system": ""
+    "clear_system_msg": "Chat cleared. Short-term memory reset."
   },
   "commands": {
     "help_text": "Available commands:\n  /note <title> | <content> - Save a note\n  /remind <minutes> <message> - Set a reminder\n  /remember <text> - Save an episodic memory\n  /memories - List recent episodic memories\n  /mood - Show current mood\n  /context - Show current context\n  /proactive [on|off] - Toggle proactive comments\n  /model [status|download] - Manage the local LLM model\n  /debug [on|off] - Log the exact prompt sent to the model\n  /help - Show this help\n  /exit - Quit TomoDesk",
     "note_saved": "Note #{id} saved: {title}",
-    "note_updated": "Note #{id} updated",
-    "note_deleted": "Note #{id} deleted",
-    "reminder_set": "Reminder set for {time}: {message}",
     "reminder_cancelled": "Reminder #{id} cancelled",
-    "episodic_saved": "Episodic memory saved (importance: {importance})",
-    "episodic_deleted": "Episodic memory #{id} deleted",
     "unknown_command": "Unknown command. Type /help for available commands.",
-    "error_missing_args": "Missing arguments. Usage: {usage}",
     "note_usage": "Usage: /note <add|list|show|delete|search> [arguments]",
     "note_unknown_subcmd": "Unknown note subcommand: {subcmd}. Use add, list, show, delete, or search.",
     "note_title_empty": "Note title cannot be empty.",
@@ -328,23 +305,13 @@
       "debug_prompts": "Log prompts sent to the model (to tomodesk.log)",
       "log_open_folder": "Open logs folder",
       "advanced_about": "About",
-      "tutorial_play": "Play initial tutorial",      "save": "Save",
-      "close": "Close",
-      "cancel": "Cancel"
+      "tutorial_play": "Play initial tutorial",
+      "save": "Save",
+      "close": "Close"
     }
   },
   "prompts": {
     "system": "You are {name}, a desktop companion. Personality: {traits}.\nEmotional state: happiness={happiness:.2f}, energy={energy:.2f}, closeness={closeness:.2f}, connection={connection:.2f}.\nKeep responses concise, friendly, and helpful.\nCurrent language: {language}."
-  },
-  "proactive": {
-    "app_opened": "You opened {app}. Need a hand?",
-    "app_closed": "Closed {app}. Back to work?",
-    "first_app": "First app of the day: {app}. Let's go!",
-    "return_from_idle": "Welcome back! I missed you.",
-    "long_session": "You've been working for {hours}h. Take a break?",
-    "random_greeting": "Hey! How's it going?",
-    "cpu_high": "Your CPU is at {cpu}%. Close some apps?",
-    "ram_high": "RAM usage is {ram}%. Maybe restart soon."
   },
   "interaction": {
     "no_last_message": "Hello! How can I help?",
@@ -357,16 +324,9 @@
     "bubble_click": "✏️ Click here to reply quickly",
     "right_click": "📋 Right-click for menu"
   },
-  "system": {
-    "error_ollama": "Cannot connect to Ollama. Please start Ollama and pull model: {model}",
-    "error_generic": "An error occurred: {error}"
-  },
   "status": {
-    "ready": "Ready",
-    "window_idle": "Window: {window} | Idle: {idle}",
     "focus_mode_indicator": "🔕 Focus",
     "dnd_mode_indicator": "🔇 DND",
-    "proactive_triggered": "Proactive: {trigger}",
     "mood_happiness": "♥ {value:.2f}",
     "mood_energy": "⚡ {value:.2f}",
     "mood_curiosity": "☀ {value:.2f}",
@@ -377,15 +337,8 @@
     "mood_name_curiosity": "Curiosity",
     "mood_name_closeness": "Closeness",
     "mood_name_connection": "Connection",
-    "proactive_on": "Proactive: ON",
-    "proactive_off": "Proactive: OFF",
     "ready_message": "{name} is ready!",
     "llm_unavailable": "[!] {model} not available. Chat requires a connection to the LLM provider.",
-    "happiness": "Character's current happiness level",
-    "energy": "Character's current energy level",
-    "curiosity": "Character's current curiosity level",
-    "closeness": "Character's current closeness level",
-    "proactive": "Indicates whether proactive mode is enabled or disabled",
     "sleeping": "{name} fell asleep... 💤",
     "sleeping_low_energy": "So tired... need to rest... 💤",
     "waking_up": "Good morning! 😊",

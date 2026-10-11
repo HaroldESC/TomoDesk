@@ -6,24 +6,20 @@
     "model_license_note": "Los modelos de chat pueden tener su propia licencia (p. ej. Meta Llama 3.2 usa la Licencia de Comunidad Llama, no MIT). Ver README para más detalles."
   },
   "menu": {
-    "file": "&Archivo",
-    "clear_chat": "&Limpiar chat",
     "exit": "S&alir",
     "restart": "&Reiniciar",
-    "memory": "&Memoria",
     "notes": "&Notas...",
     "reminders": "&Recordatorios...",
     "episodic_memories": "&Memorias episódicas...",
-    "show_mood": "Mostrar &estado de ánimo",
     "settings": "&Ajustes",
-    "proactive_comments": "Comentarios &proactivos...",
     "focus_mode": "Modo &concentración",
-    "configuration": "&Configuración...",
-    "help": "Ay&uda",
-    "about": "&Acerca de TomoDesk",
+    "help": {
+      "title": "Ayuda",
+      "guide": "Guía de interacción",
+      "about": "Acerca de TomoDesk"
+    },
     "chat": "&Chat",
     "show_chat": "Mostrar Chat",
-    "tools": "&Herramientas",
     "char": {
       "show_overlay": "Mostrar/Ocultar Compañero",
       "focus_mode": "Modo Concentración",
@@ -35,11 +31,6 @@
       "notes": "Notas",
       "reminders": "Recordatorios",
       "episodic": "Memorias Episódicas"
-    },
-    "help": {
-      "title": "Ayuda",
-      "guide": "Guía de interacción",
-      "about": "Acerca de TomoDesk"
     }
   },
   "chat": {
@@ -47,27 +38,13 @@
     "send_button": "Enviar",
     "thinking": "...",
     "error_prefix": "[Error: {error}]",
-    "clear_system_msg": "Chat limpiado. Memoria a corto plazo reiniciada.",
-    "mood_title": "Estado de ánimo actual:",
-    "mood_bar": "{var}: {bar} {value:.2f}",
-    "proactive_toggle_on": "Comentarios proactivos activados.",
-    "proactive_toggle_off": "Comentarios proactivos desactivados.",
-    "focus_mode_on": "Modo concentración ACTIVADO.",
-    "focus_mode_off": "Modo concentración DESACTIVADO.",
-    "reminder_prefix": "⏰ RECORDATORIO: {message}",
-    "role_system": ""
+    "clear_system_msg": "Chat limpiado. Memoria a corto plazo reiniciada."
   },
   "commands": {
     "help_text": "Comandos disponibles:\n  /note <título> | <contenido> - Guardar nota\n  /remind <minutos> <mensaje> - Crear recordatorio\n  /remember <texto> - Guardar memoria episódica\n  /memories - Listar memorias episódicas recientes\n  /mood - Mostrar estado de ánimo\n  /context - Mostrar contexto actual\n  /proactive [on|off] - Activar/desactivar comentarios proactivos\n  /model [status|download] - Gestionar el modelo LLM local\n  /debug [on|off] - Registrar el prompt exacto enviado al modelo\n  /help - Mostrar esta ayuda\n  /exit - Salir de TomoDesk",
     "note_saved": "Nota #{id} guardada: {title}",
-    "note_updated": "Nota #{id} actualizada",
-    "note_deleted": "Nota #{id} eliminada",
-    "reminder_set": "Recordatorio programado para {time}: {message}",
     "reminder_cancelled": "Recordatorio #{id} cancelado",
-    "episodic_saved": "Memoria episódica guardada (importancia: {importance})",
-    "episodic_deleted": "Memoria episódica #{id} eliminada",
     "unknown_command": "Comando desconocido. Escribe /help para ver comandos disponibles.",
-    "error_missing_args": "Faltan argumentos. Uso: {usage}",
     "note_usage": "Uso: /note <add|list|show|delete|search> [argumentos]",
     "note_unknown_subcmd": "Subcomando de nota desconocido: {subcmd}. Usa add, list, show, delete o search.",
     "note_title_empty": "El título de la nota no puede estar vacío.",
@@ -330,22 +307,11 @@
       "advanced_about": "Acerca de",
       "tutorial_play": "Reproducir tutorial inicial",
       "save": "Guardar",
-      "close": "Cerrar",
-      "cancel": "Cancelar"
+      "close": "Cerrar"
     }
   },
   "prompts": {
     "system": "Eres {name}, un compañero de escritorio. Personalidad: {traits}.\nEstado emocional: felicidad={happiness:.2f}, energía={energy:.2f}, cercanía={closeness:.2f}, conexión={connection:.2f}.\nMantén respuestas concisas, amigables y útiles.\nIdioma actual: {language}."
-  },
-  "proactive": {
-    "app_opened": "Abriste {app}. ¿Necesitas ayuda?",
-    "app_closed": "Cerraste {app}. ¿De vuelta al trabajo?",
-    "first_app": "Primera aplicación del día: {app}. ¡Vamos!",
-    "return_from_idle": "¡Bienvenido de vuelta! Te extrañé.",
-    "long_session": "Llevas {hours}h trabajando. ¿Un descanso?",
-    "random_greeting": "¡Hola! ¿Cómo va todo?",
-    "cpu_high": "Tu CPU está al {cpu}%. ¿Cierras algunas apps?",
-    "ram_high": "Uso de RAM: {ram}%. Quizás reiniciar pronto."
   },
   "interaction": {
     "no_last_message": "¡Hola! ¿Cómo puedo ayudarte?",
@@ -358,16 +324,9 @@
     "bubble_click": "✏️ Haz clic aquí para responder rápido",
     "right_click": "📋 Clic derecho para menú"
   },
-  "system": {
-    "error_ollama": "No se puede conectar a Ollama. Inicia Ollama y descarga el modelo: {model}",
-    "error_generic": "Ocurrió un error: {error}"
-  },
   "status": {
-    "ready": "Listo",
-    "window_idle": "Ventana: {window} | Inactivo: {idle}",
     "focus_mode_indicator": "🔕 Concentración",
     "dnd_mode_indicator": "🔇 No molestar",
-    "proactive_triggered": "Proactivo: {trigger}",
     "mood_happiness": "♥ {value:.2f}",
     "mood_energy": "⚡ {value:.2f}",
     "mood_curiosity": "☀ {value:.2f}",
@@ -378,15 +337,8 @@
     "mood_name_curiosity": "Curiosidad",
     "mood_name_closeness": "Cercanía",
     "mood_name_connection": "Conexión",
-    "proactive_on": "Proactivo: ON",
-    "proactive_off": "Proactivo: OFF",
     "ready_message": "¡{name} está listo!",
     "llm_unavailable": "[!] {model} no disponible. El chat requiere conexion al proveedor LLM.",
-    "happiness": "Nivel de felicidad actual del personaje",
-    "energy": "Nivel de energía actual del personaje",
-    "curiosity": "Nivel de curiosidad actual del personaje",
-    "closeness": "Nivel de cercanía actual del personaje",
-    "proactive": "Indica si el modo proactivo está activado o desactivado",
     "sleeping": "{name} se quedó dormido... 💤",
     "sleeping_low_energy": "Tan cansada... necesito descansar... 💤",
     "waking_up": "Buenos días! 😊",
