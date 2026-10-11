@@ -198,14 +198,12 @@ class MainWindow(QMainWindow):
             msg = self.i18n.t("status.listening", name=name)
 
         self.mood_label.setText(msg)
-        tooltip = (
-            f"Happiness: {state['happiness']:.2f}\n"
-            f"Energy: {state['energy']:.2f}\n"
-            f"Curiosity: {state['curiosity']:.2f}\n"
-            f"Closeness: {state['closeness']:.2f}\n"
-            f"Connection: {state['connection']:.2f}"
+        self.mood_label.setToolTip(
+            "\n".join(
+                self.i18n.t(f"status.mood_{key}", value=state[key])
+                for key in ("happiness", "energy", "curiosity", "closeness", "connection")
+            )
         )
-        self.mood_label.setToolTip(tooltip)
 
         if self.proactive_engine:
             try:

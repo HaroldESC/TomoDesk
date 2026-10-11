@@ -450,18 +450,12 @@ def cmd_mood(
     lines = [i18n.t("commands.mood_header")]
     for var_name in ["happiness", "energy", "curiosity", "closeness", "connection"]:
         b = bar(state[var_name])
-        display_name = var_name.capitalize()
-        if var_name == "happiness":
-            display_name = "Happiness"
-        elif var_name == "energy":
-            display_name = "Energy"
-        elif var_name == "curiosity":
-            display_name = "Curiosity"
-        elif var_name == "closeness":
-            display_name = "Closeness"
-        elif var_name == "connection":
-            display_name = "Connection"
-        lines.append(i18n.t("commands.mood_value_line", var=display_name, bar=b, value=state[var_name]))
+        lines.append(i18n.t(
+            "commands.mood_value_line",
+            var=i18n.t(f"status.mood_name_{var_name}"),
+            bar=b,
+            value=state[var_name],
+        ))
 
     if instruction:
         lines.append(f"\n{i18n.t('commands.mood_tone_instruction', instruction=instruction)}")
