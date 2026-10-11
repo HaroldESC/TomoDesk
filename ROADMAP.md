@@ -17,6 +17,20 @@ target tier, not a hard commitment:
 
 ## Released
 
+### v1.7.1
+
+- Fixed the packaged app icon: the "T" is now drawn geometrically instead of
+  with a system font, because the release job runs `generate_icon.py` with
+  `QT_QPA_PLATFORM=offscreen`, where Qt loads no fonts and `drawText` painted a
+  missing-glyph box on every shortcut, the taskbar and the installer.
+- The release build ships the embedded `llama-cpp-python` runtime by default
+  and aborts the build if it is missing; `-Standard` / `--standard` build the
+  light variant on purpose.
+- The first-run wizard and Settings hide the local model when the binary cannot
+  run it, and `/model download` explains why instead of fetching ~800 MB.
+- Restored the exe's `RT_VERSION` resource and bundled
+  `data/comments_{en,es}.yaml`, which the packaged app was missing.
+
 ### v1.7.0
 
 - CLI mode without a GUI stack: `src/__init__.py` exports only `__version__`,
@@ -81,7 +95,8 @@ target tier, not a hard commitment:
 - Local option displays the recommended GGUF model, probes its remote size and
   downloads it with progress and cancellation; the external option validates
   the endpoint/model and stores the API key in the OS keyring.
-- `-Full` / `--full` build variants that bundle the `llama-cpp-python` runtime.
+- `-Full` / `--full` build variants that bundle the `llama-cpp-python` runtime
+  (now the default; `-Standard` / `--standard` opt out).
 
 ### v1.3.0
 
@@ -134,14 +149,13 @@ target tier, not a hard commitment:
 ### AI providers and first-run experience
 
 - Make the embedded llama.cpp provider the default on first run: ship a small
-  curated GGUF and bundle the runtime in the standard build, keeping the model
-  download explicit and optional so the base binary stays lean. `ollama` is
-  still the default in `config.example.yaml`, the curated GGUF is downloaded on
-  demand (license), and the runtime only ships in the `-Full` build. — **Next**
+  curated GGUF so the model download becomes optional, and switch
+  `config.example.yaml` away from `ollama`. The runtime already ships in the
+  default build since v1.7.1, and the curated GGUF is downloaded on demand
+  (license). — **Next**
 - Streamline first-run so a new user gets a working local model with one click,
-  with a clear side path to an external API. The wizard needs four steps, a
-  ~770 MB download and an app restart, and its local page does not warn when the
-  build has no `llama-cpp-python` runtime. — **Next**
+  with a clear side path to an external API. The wizard still needs four steps,
+  a ~770 MB download and an app restart. — **Next**
 - Provider UX: dynamic Settings per provider, endpoint/model validation,
   model discovery, effective-model display and per-API tips (rate limits, 429
   behavior, role-play tuning). The provider page is static today and endpoint

@@ -205,9 +205,18 @@ def _provider_label(config) -> str:
     if provider == "openai_compatible":
         return f"OpenAI-compatible endpoint at {config['llm'].get('endpoint', '')}"
     if provider == "llama_cpp":
+        from src.config import paths
+        from src.llm.llama_cpp import is_llama_cpp_available
+
+        if paths.is_frozen() and not is_llama_cpp_available():
+            return (
+                "llama.cpp (local model), but this build does not include the "
+                "local AI engine. Switch to Ollama or an external API in "
+                "Settings"
+            )
         return (
-            "llama.cpp (local model). Check that llama-cpp-python is installed "
-            "and the GGUF is downloaded (/model status)"
+            "llama.cpp (local model). Check that the local AI engine is "
+            "installed and the GGUF is downloaded (/model status)"
         )
     return provider
 

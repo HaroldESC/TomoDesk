@@ -8,7 +8,11 @@ se resuelven en tiempo de ejecución contra ``%APPDATA%``/``%LOCALAPPDATA%``
 o los dirs XDG (ver ``src/config/paths.py``).
 
 Uso:
-    pyinstaller tomodesdk.spec --noconfirm
+    pyinstaller tomodesk.spec --noconfirm
+
+Los scripts `build/build_windows.ps1` y `build/build_unix.sh` son la via
+recomendada: generan el icono y el version info antes de invocar PyInstaller y
+verifican, despues, que el runtime de IA local acabo en el bundle.
 """
 
 import os
@@ -48,20 +52,32 @@ for pkg in ("tokenizers",):
     binaries += b
     hiddenimports += h
 
-# ── llama_cpp (opcional, provider local): import perezoso en
-# src/llm/llama_cpp.py (from llama_cpp import Llama), que modulegraph no ve.
-# Solo se bundlea si llama-cpp-python esta instalada en el entorno de build
-# (requirement requirements-llama.txt); los builds "estandar" no crecen.
-# Para generar el asset "full" instala primero esa dependencia, p.ej. con
-# `build\build_windows.ps1 -Full` o `bash build/build_unix.sh --full`.
+# ── llama_cpp (provider local): import perezoso en src/llm/llama_cpp.py
+# (from llama_cpp import Llama), que modulegraph no ve. Solo se bundlea si
+# llama-cpp-python esta instalada en el entorno de build (requirements-llama.txt).
+#
+# Los scripts de build lo instalan POR DEFECTO (build\build_windows.ps1,
+# bash build/build_unix.sh) y exportan TOMODESK_REQUIRE_LLAMA_CPP=1, de modo que
+# un release no puede salir sin el provider local por accidente. El switch
+# -Standard / --standard omite la instalacion y no exporta la variable, para
+# generar un binario ligero a proposito.
+_REQUIRE_LLAMA_CPP = os.environ.get("TOMODESK_REQUIRE_LLAMA_CPP") == "1"
 try:
     d, b, h = collect_all("llama_cpp")
     print("[TomoDesk] llama-cpp-python detectado: se incluye el runtime local "
           "(%d binarios, %d datos)" % (len(b), len(d)))
-except Exception:
+except Exception as _exc:
+    if _REQUIRE_LLAMA_CPP:
+        raise SystemExit(
+            "[TomoDesk] TOMODESK_REQUIRE_LLAMA_CPP=1 pero llama-cpp-python no "
+            "esta instalada: el binario saldria sin el provider local y el "
+            "asistente no podria ofrecer IA local. Instala "
+            "requirements-llama.txt o builda con -Standard / --standard si "
+            "quieres un binario sin IA local a proposito. (%s)" % _exc
+        )
     d = b = h = []
     print("[TomoDesk] llama-cpp-python NO instalado: build estandar "
-          "(sin runtime local). Usa -Full / --full para incluirlo.")
+          "(sin runtime local). El asistente ocultara la opcion de IA local.")
 datas += d
 binaries += b
 hiddenimports += h + ["llama_cpp"]
@@ -117,6 +133,11 @@ _RESOURCES = [
     ("config.example.yaml", "."),
     ("build/assets/tomodesk.png", "."),
     ("data/locales", "data/locales"),
+    # CommentLoader ancla la ruta en `paths.comments_yaml` (base _RESOURCE) y de
+    # ahi deriva la variante de idioma `comments_<lang>.yaml`. Si no viajan en el
+    # bundle, phrases = {} y el usuario empaquetado se queda sin comentarios.
+    ("data/comments_en.yaml", "data"),
+    ("data/comments_es.yaml", "data"),
     ("data/sprites/schema.json", "data/sprites"),
     ("data/sprites/default", "data/sprites/default"),
     ("data/context_packs/schema.json", "data/context_packs"),
@@ -128,6 +149,9 @@ for src, dst in _RESOURCES:
         datas.append((src, dst))
 
 # ── Metadatos de version (Windows) ──────────────────────────────────────────
+# `build/make_version_info.py` genera este archivo desde `src/__init__.py`; se
+# pasa a EXE() como `version=` para que el exe lleve el recurso RT_VERSION (sin
+# el, las propiedades del archivo y el "Version" del exe salen vacios).
 _version_info = "build/version_info.txt"
 version = _version_info if os.path.exists(_version_info) else None
 
@@ -158,6 +182,7 @@ exe = EXE(
     upx=False,
     console=False,
     icon="build/assets/tomodesk.ico" if os.name == "nt" else None,
+    version=version,
 )
 coll = COLLECT(
     exe,

@@ -35,6 +35,26 @@ def no_size_probe(mocker):
     return mocker.patch.object(sw, "_SizeWorker")
 
 
+@pytest.fixture(autouse=True)
+def local_engine(mocker):
+    """Mantiene el motor local disponible por defecto.
+
+    El entorno de desarrollo puede tener o no ``llama-cpp-python`` instalado;
+    los tests que simulan un binario sin motor local llaman al setter con
+    ``False`` antes de construir el asistente.
+    """
+    patch = mocker.patch(
+        "src.gui.windows.setup_wizard.is_llama_cpp_available",
+        return_value=True,
+    )
+
+    def _set(available: bool):
+        patch.return_value = available
+        return patch
+
+    return _set
+
+
 class TestFormatSize:
     def test_bytes(self):
         assert format_size(512) == "512 B"
@@ -205,6 +225,60 @@ class TestApply:
             assert config["llm"]["provider"] == "ollama"
             assert config["setup"]["completed"] is True
             assert wizard.requires_restart() is False
+        finally:
+            wizard.close()
+
+
+class TestLocalEngineAvailability:
+    def test_absent_disables_local_and_defaults_to_later(
+        self, qapp, mock_i18n, local_engine
+    ):
+        local_engine(False)
+        wizard = SetupWizard(_config(), i18n=mock_i18n)
+        try:
+            assert wizard._local_radio.isEnabled() is False
+            assert wizard._local_radio.isChecked() is False
+            assert wizard._later_radio.isChecked() is True
+            assert wizard.selected_mode() == MODE_LATER
+            assert wizard._local_note is not None
+            assert wizard._local_note.text() == (
+                "Not available: this build does not include the local AI "
+                "engine (llama.cpp)."
+            )
+            assert wizard._local_note.isHidden() is False
+            assert wizard._local_note.wordWrap() is True
+            mock_i18n.t.assert_any_call("setup.mode_local_unavailable")
+        finally:
+            wizard.close()
+
+    def test_absent_apply_never_sets_llama_cpp(
+        self, qapp, mock_i18n, local_engine, no_size_probe, mocker
+    ):
+        mocker.patch.object(sw, "save_config")
+        local_engine(False)
+        config = _config()
+        wizard = SetupWizard(config, i18n=mock_i18n)
+        try:
+            # Forzar el modo local a mano: el radio esta deshabilitado para el
+            # usuario, pero ``apply_to_config`` debe defenderse igualmente.
+            wizard._local_radio.setChecked(True)
+            assert wizard.selected_mode() == MODE_LOCAL
+            wizard.apply_to_config()
+            assert config["llm"]["provider"] != "llama_cpp"
+            assert config["llm"]["provider"] == "ollama"
+            assert config["setup"]["completed"] is True
+            assert wizard.requires_restart() is False
+        finally:
+            wizard.close()
+
+    def test_present_keeps_local_selected(self, qapp, mock_i18n, local_engine):
+        local_engine(True)
+        wizard = SetupWizard(_config(), i18n=mock_i18n)
+        try:
+            assert wizard._local_radio.isEnabled() is True
+            assert wizard._local_radio.isChecked() is True
+            assert wizard.selected_mode() == MODE_LOCAL
+            assert wizard._local_note is None
         finally:
             wizard.close()
 

@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QGroupBox, QMessageBox, QSizePolicy
+from PySide6.QtWidgets import QGroupBox, QLabel, QMessageBox, QSizePolicy
 
 from src.context.context_pack import ContextPackManager
 from src.platform import PlatformCapabilities, _set_platform
@@ -23,6 +23,26 @@ def mock_config():
 @pytest.fixture(autouse=True)
 def ensure_qapp(qapp):
     return qapp
+
+
+@pytest.fixture(autouse=True)
+def local_engine(mocker):
+    """Mantiene el motor local disponible por defecto.
+
+    El entorno de desarrollo puede tener o no ``llama-cpp-python`` instalado;
+    los tests que simulan un binario sin motor local llaman al setter con
+    ``False`` antes de construir el dialogo.
+    """
+    patch = mocker.patch(
+        "src.gui.windows.settings_dialog.is_llama_cpp_available",
+        return_value=True,
+    )
+
+    def _set(available: bool):
+        patch.return_value = available
+        return patch
+
+    return _set
 
 
 @pytest.fixture
@@ -315,6 +335,46 @@ class TestModelDownload:
 
         assert _soft_wrap_path("C:\\a\\b.gguf") == "C:\\\u200ba\\\u200bb.gguf"
         assert _soft_wrap_path("h/x.gguf") == "h/\u200bx.gguf"
+
+
+class TestLocalEngineAvailability:
+    def test_absent_disables_download_and_shows_note(
+        self, qtbot, mock_config, mock_i18n, local_engine
+    ):
+        local_engine(False)
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        assert dialog.llama_download_btn.isEnabled() is False
+        notes = [
+            label for label in dialog.findChildren(QLabel)
+            if label.text() == "dialogs.settings.llama_cpp_unavailable"
+        ]
+        assert len(notes) == 1
+        assert notes[0].wordWrap() is True
+
+    def test_present_keeps_download_enabled(
+        self, qtbot, mock_config, mock_i18n, local_engine
+    ):
+        local_engine(True)
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        assert dialog.llama_download_btn.isEnabled() is True
+        notes = [
+            label for label in dialog.findChildren(QLabel)
+            if label.text() == "dialogs.settings.llama_cpp_unavailable"
+        ]
+        assert notes == []
+
+    def test_download_blocked_without_engine(
+        self, qtbot, mock_config, mock_i18n, local_engine
+    ):
+        local_engine(False)
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        with patch("src.llm.download.download_model") as download_mock, \
+             patch("src.gui.windows.settings_dialog.QMessageBox") as mb:
+            dialog._on_download_model()
+        download_mock.assert_not_called()
+        mb.information.assert_called_once()
+        assert getattr(dialog, "_download_worker", None) is None
+        assert dialog.llm_provider.currentText() != "llama_cpp"
 
 
 class _FakePackManager:

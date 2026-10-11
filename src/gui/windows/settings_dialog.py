@@ -29,6 +29,7 @@ from src.gui.sprites.sprite_loader import SpriteLoader
 from src.gui.styles.styles import get_style_set
 from src.gui.utils import force_taskbar_entry
 from src.gui.widgets.speech_bubble import BubbleStyle
+from src.llm.llama_cpp import is_llama_cpp_available
 from src.personality.personality_pack import packs_root
 from src.platform import PlatformCapabilities, get_platform
 
@@ -657,6 +658,14 @@ class SettingsDialog(QDialog):
         note.setWordWrap(True)
         layout.addWidget(note)
 
+        if not is_llama_cpp_available():
+            self.llama_download_btn.setEnabled(False)
+            unavailable = QLabel(
+                self.i18n.t("dialogs.settings.llama_cpp_unavailable")
+            )
+            unavailable.setWordWrap(True)
+            layout.addWidget(unavailable)
+
     def _on_browse_llama_path(self):
         current = self.llama_path.text().strip() or ""
         start = current if current else str(user_resolve("data/models"))
@@ -667,6 +676,14 @@ class SettingsDialog(QDialog):
             self.llama_path.setText(path)
 
     def _on_download_model(self):
+        if not is_llama_cpp_available():
+            QMessageBox.information(
+                self,
+                self.i18n.t("dialogs.settings.title"),
+                self.i18n.t("dialogs.settings.llama_cpp_unavailable"),
+            )
+            return
+
         from src.llm import download as dl
 
         dest = dl.model_path_from_config(self.config)

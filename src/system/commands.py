@@ -513,6 +513,11 @@ def cmd_model(args, memory_manager, config, **kwargs) -> Tuple[Optional[str], bo
         return ("\n".join(lines), True)
 
     if action == "download":
+        if not _llama_cpp_installed():
+            # Sin provider local no tiene sentido bajar ~800 MB: el binario no
+            # podria cargar el GGUF. Avisamos en vez de gastar la descarga.
+            return (i18n.t("commands.model_no_provider"), True)
+
         if download.model_exists(config):
             return (i18n.t("commands.model_already_downloaded"), True)
 
@@ -543,11 +548,10 @@ def cmd_model(args, memory_manager, config, **kwargs) -> Tuple[Optional[str], bo
 
 
 def _llama_cpp_installed() -> bool:
-    try:
-        import llama_cpp  # noqa: F401
-        return True
-    except ImportError:
-        return False
+    """Delegado en ``src.llm.llama_cpp`` para tener una unica fuente de verdad."""
+    from src.llm.llama_cpp import is_llama_cpp_available
+
+    return is_llama_cpp_available()
 
 
 def cmd_debug(args, memory_manager, config, **kwargs) -> Tuple[Optional[str], bool]:

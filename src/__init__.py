@@ -7,4 +7,4 @@ stack. Only the version lives here; ``build/bump_version.py`` and the CI
 release guard read it with a positional regex.
 """
 
-__version__ = "1.7.0"
+__version__ = "1.7.1"

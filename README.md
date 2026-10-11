@@ -2,10 +2,10 @@
 
 > Desktop companion that merges an interactive character with an AI-powered productivity agent. Local-first, private, and customizable.
 
-![Version](https://img.shields.io/badge/version-1.7.0-blue)
+![Version](https://img.shields.io/badge/version-1.7.1-blue)
 ![Python](https://img.shields.io/badge/python-3.12%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Status](https://img.shields.io/badge/status-v1.7.0--release-yellow)
+![Status](https://img.shields.io/badge/status-v1.7.1--release-yellow)
 ![CI](https://github.com/HaroldESC/TomoDesk/actions/workflows/ci.yml/badge.svg)
 
 ## Table of Contents
@@ -52,7 +52,7 @@ TomoDesk is a desktop companion application that lives in your system tray and d
 - One of:
   - [Ollama](https://ollama.com/) with a pulled model (e.g., `llama3.2:1b`)
   - An OpenAI-compatible server (LM Studio, vLLM, Jan)
-  - `llama-cpp-python` (optional, CPU wheel) to run a local GGUF model embedded in the app
+  - `llama-cpp-python` (pinned CPU wheel) to run a local GGUF model embedded in the app; it is bundled in the release builds
 
 ### Optional: embedded llama.cpp model
 
@@ -67,7 +67,9 @@ Then set `llm.provider: llama_cpp` in `config.yaml` and download a model with th
 The GGUF is saved to `data/models/`. See the [License](#license) note about the
 default model. (`llama-cpp-python` is not part of the mandatory
 `requirements.txt` so the base binary stays lean; install `requirements-llama.txt`
-only if you want the embedded provider.)
+only if you want the embedded provider in a source checkout. The published
+installers and the AppImage already include it, and their UI hides the local
+option if a build was made without it.)
 
 ### Setup
 
@@ -229,7 +231,7 @@ src/
 | Layer | Technologies |
 |---|---|
 | **Backend** | Python 3.12+, SQLite, ChromaDB (ONNX embeddings) |
-| **AI** | Ollama, OpenAI-compatible API (LM Studio, vLLM, Jan), embedded llama.cpp (llama-cpp-python, optional) |
+| **AI** | Ollama, OpenAI-compatible API (LM Studio, vLLM, Jan), embedded llama.cpp (llama-cpp-python, bundled in release builds) |
 | **GUI** | PySide6 (Qt for Python) |
 | **OS Interaction** | `src/platform/` adapter layer (ctypes + pygetwindow); psutil, lazily imported |
 | **Security** | keyring (OS keyring), secure file permissions |

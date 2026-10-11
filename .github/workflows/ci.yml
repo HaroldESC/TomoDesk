@@ -60,6 +60,9 @@ jobs:
       matrix:
         os: [windows-latest, ubuntu-22.04]
     env:
+      # Necesario en el runner Linux (sin display) para que generate_icon.py
+      # pueda crear su QGuiApplication. El icono se dibuja geometricamente, sin
+      # depender de las fuentes del sistema, que aqui no existen.
       QT_QPA_PLATFORM: offscreen
       PYTHONUNBUFFERED: "1"
     steps:

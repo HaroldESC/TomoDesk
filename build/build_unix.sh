@@ -2,12 +2,16 @@
 # Build de TomoDesk para Linux: PyInstaller (one-folder) + appimagetool (AppImage).
 #
 # Uso:
-#   bash build/build_unix.sh [--full]
+#   bash build/build_unix.sh [--standard]
 #
-#   --full  instala llama-cpp-python (requirements-llama.txt) antes de empaquetar,
-#           generando el asset "full" con el runtime de IA local embebido. El
-#           modelo GGUF NO se bundlea (licencia): se descarga con el asistente de
-#           primera ejecucion o desde Ajustes.
+#   (por defecto)  instala llama-cpp-python (requirements-llama.txt) antes de
+#                  empaquetar, de modo que el binario incluye el provider de IA
+#                  local (llama.cpp). El modelo GGUF NO se bundlea (licencia):
+#                  se descarga con el asistente de primera ejecucion o desde
+#                  Ajustes.
+#   --standard     NO instala llama-cpp-python: binario mas ligero que oculta la
+#                  opcion de IA local en el asistente. Solo para pruebas.
+#   --full         obsoleto; equivale al comportamiento por defecto.
 #
 # Requisitos:
 #   - Python 3.12 + las deps Qt del sistema (libegl1, libgl1, libxkbcommon0,
@@ -21,10 +25,11 @@
 
 set -euo pipefail
 
-FULL=0
+STANDARD=0
 for arg in "$@"; do
     case "$arg" in
-        --full) FULL=1 ;;
+        --standard) STANDARD=1 ;;
+        --full) echo "Aviso: --full es obsoleto; la IA local es el comportamiento por defecto" >&2 ;;
         *) echo "Argumento desconocido: $arg" >&2; exit 2 ;;
     esac
 done
@@ -53,10 +58,16 @@ echo "== Build Linux: TomoDesk $VERSION =="
 # 1. Dependencia de build (PyInstaller)
 "$PY" -m pip install -q -r build/requirements-build.txt
 
-# 1b. Runtime local opcional (asset "full")
-if [ "$FULL" -eq 1 ]; then
-    echo "Instalando llama-cpp-python (build full)..."
+# 1b. Runtime local de IA (llama-cpp-python). Por defecto SI se incluye: el
+#     asistente de primera ejecucion ofrece IA local y el binario debe poder
+#     servirla. --standard genera un binario sin ella a proposito.
+if [ "$STANDARD" -eq 1 ]; then
+    echo "Build estandar (--standard): sin llama-cpp-python, la IA local se ocultara en el asistente."
+else
+    echo "Instalando llama-cpp-python (provider de IA local)..."
     "$PY" -m pip install -q -r requirements-llama.txt
+    # Hace que tomodesk.spec aborte si llama_cpp no acaba en el bundle.
+    export TOMODESK_REQUIRE_LLAMA_CPP=1
 fi
 
 # 2. Icono
@@ -65,6 +76,19 @@ fi
 # 3. PyInstaller one-folder
 "$PY" -m PyInstaller tomodesk.spec --noconfirm --clean
 [ -f dist/TomoDesk/TomoDesk ] || { echo "Fallo el build de PyInstaller" >&2; exit 1; }
+
+# 3b. Verificacion post-build del runtime local: un release no debe salir sin el
+#     provider que el asistente ofrece descargar.
+if [ -d dist/TomoDesk/_internal/llama_cpp ]; then
+    LLAMA_BUNDLED="si"
+else
+    LLAMA_BUNDLED="no"
+fi
+if [ "$STANDARD" -eq 1 ]; then
+    [ "$LLAMA_BUNDLED" = "si" ] && echo "Aviso: --standard pedido pero llama_cpp acabo en el bundle" >&2
+else
+    [ "$LLAMA_BUNDLED" = "si" ] || { echo "El build debia incluir la IA local pero dist/TomoDesk/_internal/llama_cpp no existe" >&2; exit 1; }
+fi
 
 # 4. AppDir
 APPDIR="$ROOT/build/AppDir"
@@ -101,4 +125,5 @@ ARCH=x86_64 "$TOOL" --appimage-extract-and-run "$APPDIR" \
     "dist/TomoDesk-$VERSION-x86_64.AppImage"
 
 echo "== Build completado =="
+echo "  IA local: $LLAMA_BUNDLED"
 echo "  AppImage: dist/TomoDesk-$VERSION-x86_64.AppImage"

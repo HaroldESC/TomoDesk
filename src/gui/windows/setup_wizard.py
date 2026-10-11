@@ -4,6 +4,11 @@ Se muestra una sola vez (cuando ``config.setup.completed`` es ``False``) y
 permite elegir entre IA local (llama.cpp), una API externa compatible con
 OpenAI, o posponer la decision. El diseno sigue el sistema de ``Design.md``:
 texto via ``i18n.t`` y estilos de dialogo compartidos.
+
+Si el binario no incluye el motor local (``llama-cpp-python`` no importable),
+la opcion "IA local" se muestra deshabilitada con una nota explicativa y el
+asistente preselecciona "Configurar mas tarde"; ``apply_to_config`` nunca
+escribe ``llm.provider = "llama_cpp"`` en ese caso.
 """
 
 import logging
@@ -17,6 +22,7 @@ from PySide6.QtWidgets import (
 from src.config.config import get_config_path, save_config, validate_llm_endpoint
 from src.config.credentials import CredentialManager
 from src.gui.styles.styles import get_style_set
+from src.llm.llama_cpp import is_llama_cpp_available
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +175,8 @@ class SetupWizard(QDialog):
         layout.addWidget(title)
 
         self._mode_group = QButtonGroup(self)
+        self._local_available = is_llama_cpp_available()
+        self._local_note = None
         self._local_radio = self._add_mode_option(
             layout, self._mode_group, MODE_LOCAL,
             "setup.mode_local", "Local AI",
@@ -176,6 +184,20 @@ class SetupWizard(QDialog):
             "Run models directly on your computer. Conversations are not sent "
             "to an external service.",
         )
+        if not self._local_available:
+            self._local_radio.setEnabled(False)
+            self._local_radio.setChecked(False)
+            self._local_note = QLabel(self._t(
+                "setup.mode_local_unavailable",
+                "Not available: this build does not include the local AI "
+                "engine (llama.cpp).",
+            ))
+            self._local_note.setWordWrap(True)
+            self._local_note.setObjectName("secondary")
+            self._local_note.setContentsMargins(24, 0, 0, 12)
+            layout.insertWidget(
+                layout.indexOf(self._local_radio) + 1, self._local_note
+            )
         self._external_radio = self._add_mode_option(
             layout, self._mode_group, MODE_EXTERNAL,
             "setup.mode_external", "External API",
@@ -188,7 +210,10 @@ class SetupWizard(QDialog):
             "setup.mode_later_desc",
             "Skip setup and decide later from Settings.",
         )
-        self._local_radio.setChecked(True)
+        if self._local_available:
+            self._local_radio.setChecked(True)
+        else:
+            self._later_radio.setChecked(True)
         layout.addStretch(1)
         return page
 
@@ -557,6 +582,8 @@ class SetupWizard(QDialog):
 
     def apply_to_config(self) -> None:
         mode = self.selected_mode()
+        if mode == MODE_LOCAL and not self._local_available:
+            mode = MODE_LATER
         llm = self.config.setdefault("llm", {})
         if mode == MODE_LOCAL:
             llm["provider"] = "llama_cpp"

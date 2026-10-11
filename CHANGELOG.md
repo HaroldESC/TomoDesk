@@ -5,6 +5,33 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2026-10-11
+
+### Fixed
+
+- The packaged app icon is drawn geometrically instead of with a system font.
+  The release job runs `generate_icon.py` with `QT_QPA_PLATFORM=offscreen`,
+  where Qt loads no fonts at all, so `drawText("T")` painted a missing-glyph
+  box: shortcuts, the taskbar and the installer all showed a broken icon.
+- The Windows executable carries its `RT_VERSION` resource again, so its file
+  properties no longer read as unknown.
+- `data/comments_en.yaml` and `data/comments_es.yaml` travel in the bundle, so
+  a packaged install has ambient comments instead of an empty set.
+
+### Changed
+
+- The release build includes the embedded llama.cpp provider by default. It
+  used to sit behind an opt-in flag that CI never passed, so the published
+  binary offered local AI and then failed to load the model it had just
+  downloaded. `build_windows.ps1 -Standard` and `build_unix.sh --standard`
+  build the light variant on purpose, and `tomodesk.spec` aborts the build when
+  the provider is required but missing.
+- The first-run wizard and Settings no longer offer the local model when the
+  binary cannot run it: the wizard disables "Local AI", the download button is
+  greyed out, and `/model download` explains why instead of fetching ~800 MB.
+- Messages about the missing local engine no longer tell users of a packaged
+  build to run `pip install`.
+
 ## [1.7.0] - 2026-10-11
 
 ### Added
@@ -212,3 +239,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [1.6.0]: https://github.com/HaroldESC/TomoDesk/releases/tag/v1.6.0
 [1.7.0]: https://github.com/HaroldESC/TomoDesk/releases/tag/v1.7.0
+[1.7.1]: https://github.com/HaroldESC/TomoDesk/releases/tag/v1.7.1

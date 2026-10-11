@@ -16,6 +16,50 @@ from src.llm.llm import LLMError, LLMProvider
 
 logger = logging.getLogger(__name__)
 
+# Resultado cacheado de is_llama_cpp_available(); None = aun no consultado.
+_LIBRARY_AVAILABLE: bool | None = None
+
+
+def is_llama_cpp_available() -> bool:
+    """True si ``llama-cpp-python`` se puede importar en este entorno.
+
+    La UI lo consulta ANTES de ofrecer la IA local: un binario empaquetado sin
+    el provider no debe invitar a descargar un GGUF de ~800 MB que luego no se
+    puede cargar. La importacion se cachea porque en un build congelado es
+    barata pero no gratuita, y el resultado no cambia durante la ejecucion.
+
+    Captura ``Exception`` a proposito: en un binario congelado el fallo tipico
+    no es ``ImportError`` sino ``OSError`` al no poder cargar las DLLs
+    (``llama.dll``/``ggml*.dll``), y ambos significan "no disponible".
+    """
+    global _LIBRARY_AVAILABLE
+    if _LIBRARY_AVAILABLE is None:
+        try:
+            import llama_cpp  # noqa: F401
+        except Exception as exc:
+            logger.info("llama-cpp-python no disponible: %s", exc)
+            _LIBRARY_AVAILABLE = False
+        else:
+            _LIBRARY_AVAILABLE = True
+    return _LIBRARY_AVAILABLE
+
+
+def _library_missing_message() -> str:
+    """Mensaje de la libreria ausente, adaptado a build empaquetado o fuente."""
+    from src.config import paths
+
+    if paths.is_frozen():
+        return (
+            "Este binario no incluye el motor de IA local (llama.cpp). "
+            "Elige Ollama o una API externa en Ajustes, o instala la version "
+            "con IA local incluida."
+        )
+    return (
+        "llama-cpp-python no esta instalado. Instala las dependencias de IA "
+        "local (pip install -r requirements-llama.txt) o usa Ollama / una API "
+        "externa."
+    )
+
 
 class LlamaCppProvider(LLMProvider):
     """Inference local Q4_K_M via llama.cpp (llama-cpp-python, opcional)."""
@@ -44,11 +88,12 @@ class LlamaCppProvider(LLMProvider):
             return
         try:
             from llama_cpp import Llama
-        except ImportError as exc:
+        except Exception as exc:
             self._import_error = exc
             logger.error(
-                "llama-cpp-python no esta instalado. Instala la wheel "
-                "CPU (pip install llama-cpp-python) o usa el asset 'full'."
+                "llama-cpp-python no esta disponible (%s). %s",
+                exc,
+                _library_missing_message(),
             )
             return
         if not self.model_path.exists():
@@ -105,10 +150,7 @@ class LlamaCppProvider(LLMProvider):
 
     def _unavailable_message(self) -> str:
         if self._import_error is not None:
-            return (
-                "llama-cpp-python no esta instalado. Instala la wheel CPU "
-                "(pip install llama-cpp-python) o usa el asset 'full'."
-            )
+            return _library_missing_message()
         return (
             f"Modelo GGUF no encontrado en {self.model_path}. "
             "Descargalo con el comando /model download o desde Ajustes."

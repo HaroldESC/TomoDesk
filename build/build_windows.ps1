@@ -1,12 +1,16 @@
 # Build de TomoDesk para Windows: PyInstaller (one-folder) + Inno Setup (.exe).
 #
 # Uso:
-#   powershell -ExecutionPolicy Bypass -File build\build_windows.ps1 [-Full]
+#   powershell -ExecutionPolicy Bypass -File build\build_windows.ps1 [-Standard]
 #
-#   -Full  instala llama-cpp-python (requirements-llama.txt) antes de empaquetar,
-#          generando el asset "full" con el runtime de IA local embebido. El
-#          modelo GGUF NO se bundlea (licencia): se descarga con el asistente de
-#          primera ejecucion o desde Ajustes.
+#   (por defecto)  instala llama-cpp-python (requirements-llama.txt) antes de
+#                  empaquetar, de modo que el binario incluye el provider de IA
+#                  local (llama.cpp). El modelo GGUF NO se bundlea (licencia):
+#                  se descarga con el asistente de primera ejecucion o desde
+#                  Ajustes.
+#   -Standard      NO instala llama-cpp-python: binario mas ligero que oculta la
+#                  opcion de IA local en el asistente. Solo para pruebas.
+#   -Full          obsoleto; equivale al comportamiento por defecto.
 #
 # Requisitos:
 #   - Python 3.12 con venv\ activado o creado (se auto-detecta venv\).
@@ -19,6 +23,7 @@
 #   dist\TomoDesk-Setup-<version>.exe instalador de Inno Setup
 
 param(
+    [switch]$Standard,
     [switch]$Full
 )
 
@@ -73,11 +78,23 @@ Write-Host "== Build Windows: TomoDesk $Version =="
 & $Py -m pip install -q -r build/requirements-build.txt
 if ($LASTEXITCODE -ne 0) { throw "Fallo al instalar build deps" }
 
-# 1b. Runtime local opcional (asset "full")
+# 1b. Runtime local de IA (llama-cpp-python). Por defecto SI se incluye: el
+#     asistente de primera ejecucion ofrece IA local y el binario debe poder
+#     servirla. -Standard genera un binario sin ella a proposito.
+if ($Full -and $Standard) {
+    throw "-Full y -Standard son mutuamente excluyentes"
+}
 if ($Full) {
-    Write-Host "Instalando llama-cpp-python (build full)..."
+    Write-Warning "-Full es obsoleto: el build con IA local es ahora el comportamiento por defecto"
+}
+if ($Standard) {
+    Write-Host "Build estandar (-Standard): sin llama-cpp-python, la IA local se ocultara en el asistente."
+} else {
+    Write-Host "Instalando llama-cpp-python (provider de IA local)..."
     & $Py -m pip install -q -r requirements-llama.txt
     if ($LASTEXITCODE -ne 0) { throw "Fallo al instalar llama-cpp-python" }
+    # Hace que tomodesk.spec aborte si llama_cpp no acaba en el bundle.
+    $env:TOMODESK_REQUIRE_LLAMA_CPP = "1"
 }
 
 # 2. Icono + version info
@@ -93,6 +110,17 @@ if (-not (Test-Path -LiteralPath "dist\TomoDesk\TomoDesk.exe")) {
     throw "dist\TomoDesk\TomoDesk.exe no existe tras el build"
 }
 
+# 3b. Verificacion post-build del runtime local: un release no debe salir sin el
+#     provider que el asistente ofrece descargar.
+$llamaBundled = Test-Path -LiteralPath "dist\TomoDesk\_internal\llama_cpp"
+if ($Standard) {
+    if ($llamaBundled) {
+        Write-Warning "-Standard pedido pero llama_cpp acabo en el bundle"
+    }
+} elseif (-not $llamaBundled) {
+    throw "El build debia incluir la IA local pero dist\TomoDesk\_internal\llama_cpp no existe"
+}
+
 # 4. Inno Setup -> instalador .exe
 $iscc = Find-ISCC
 if (-not $iscc) {
@@ -106,6 +134,7 @@ if (-not $iscc) {
 
 Write-Host "== Build completado =="
 Write-Host "  Version : $Version"
+Write-Host "  IA local: $llamaBundled"
 Write-Host "  One-dir: dist\TomoDesk\"
 if ($iscc) {
     Write-Host "  Setup   : dist\TomoDesk-Setup-$Version.exe"
