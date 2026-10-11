@@ -32,7 +32,6 @@ TomoDesk is a desktop companion application that lives in your system tray and d
 - Emotional state system: happiness, energy, curiosity, closeness, connection
 - Notes, reminders, and semantic search
 - Animated 2D character overlay with speech bubbles
-- Audio-reactive dancing with beat detection (optional, requires sounddevice)
 - Window-sitting: character sits on real windows (4 modes: active, mouse, closest, fixed)
 - Context packs: app-aware sprite intent resolution
 - Personality packs: load custom phrases and sprites from ZIP or directory
@@ -193,7 +192,13 @@ src/
     comment_loader.py     Comment YAML loader
     personality_pack.py   Personality pack loader (ZIP/directory)
     zip_security.py       ZIP archive validation (path traversal, manifest check)
+  platform/
+    base.py               PlatformAdapter ABC + PlatformCapabilities + WindowInfo
+    windows.py            WindowsAdapter (pygetwindow + ctypes: idle, taskbar, screens)
+    null.py               NullAdapter (degraded behaviour on other platforms)
+    __init__.py           get_platform() factory + _set_platform() test seam
   gui/
+    utils.py              Shared GUI helpers (force_taskbar_entry)
     windows/
       main_window.py      Main chat window (PySide6)
       overlay_window.py   Transparent overlay character window
@@ -226,8 +231,7 @@ src/
 | **Backend** | Python 3.12+, SQLite, ChromaDB (ONNX embeddings) |
 | **AI** | Ollama, OpenAI-compatible API (LM Studio, vLLM, Jan), embedded llama.cpp (llama-cpp-python, optional) |
 | **GUI** | PySide6 (Qt for Python) |
-| **OS Interaction** | pygetwindow, psutil, ctypes |
-| **Audio** | sounddevice, numpy (optional, for audio-reactive dancing) |
+| **OS Interaction** | `src/platform/` adapter layer (ctypes + pygetwindow); psutil, lazily imported |
 | **Security** | keyring (OS keyring), secure file permissions |
 | **Animation** | QPropertyAnimation, QTimer-based FPS control |
 | **Config** | YAML |

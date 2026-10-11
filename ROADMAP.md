@@ -88,7 +88,7 @@ target tier, not a hard commitment:
 - Multi-level memory: short-term, mid-term (SQLite), long-term and episodic (ChromaDB)
 - OS event monitoring (active window, idle time, CPU/RAM) and proactive comments
 - Emotional state system (happiness, energy, curiosity, closeness, connection)
-- Animated 2D character overlay with speech bubbles, audio-reactive dancing, and window-sitting
+- Animated 2D character overlay with speech bubbles, sprite animations, and window-sitting
 - Personality packs (ZIP/directory) and default character pack
 - Notes, reminders, and semantic search
 - System tray integration and bilingual UI (EN/ES)
