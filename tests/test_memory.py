@@ -219,9 +219,12 @@ class TestEdgeCases:
 
     def test_delete_nonexistent_note(self, memory):
         memory.delete_note(99999)
+        assert memory.list_notes() == []
+        assert memory.get_note(99999) is None
 
     def test_deactivate_nonexistent_reminder(self, memory):
         memory.deactivate_reminder(99999)
+        assert memory.list_reminders() == []
 
     def test_get_nonexistent_preference(self, memory):
         assert memory.get_preference("nonexistent_key") is None

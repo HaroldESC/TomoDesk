@@ -281,7 +281,9 @@ class TestModelDownload:
         worker.isRunning = MagicMock(
             side_effect=RuntimeError("libshiboken: Internal C++ object deleted")
         )
+        # El worker se marca como abortado sin consultar isRunning.
         dialog._abort_download()  # must not raise
+        assert worker._cancelled is True
 
     def test_done_message_uses_wordwrap_and_soft_breaks(
         self, qtbot, mock_config, mock_i18n, tmp_path

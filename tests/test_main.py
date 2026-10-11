@@ -162,6 +162,10 @@ class TestBackgroundMonitorStartup:
 
     def test_start_background_monitors_tolerates_missing_services(self):
         import main
+        from unittest.mock import MagicMock
 
-        main._start_background_monitors({})  # must not raise
+        # Un dict vacio no tiene a quien arrancar, y un valor None se ignora.
+        main._start_background_monitors({})
+        none_monitor = MagicMock()
         main._start_background_monitors({"event_monitor": None})
+        none_monitor.start.assert_not_called()

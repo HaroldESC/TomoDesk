@@ -61,7 +61,9 @@ class TestDeleteSecret:
         fake.delete_password.side_effect = Exception("boom")
         manager = CredentialManager()
         with patch.dict(sys.modules, {"keyring": fake}):
-            manager.delete_secret("llm_api_key")
+            # No debe propagar: el fallo del keyring no rompe el arranque.
+            result = manager.delete_secret("llm_api_key")
+        assert result is None
 
 
 class TestMigrateFromConfig:

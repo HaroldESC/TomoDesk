@@ -750,10 +750,16 @@ class SettingsDialog(QDialog):
         try:
             running = worker.isRunning()
         except RuntimeError:
-            return
+            # El objeto C++ ya se borro: no se puede consultar el estado,
+            # pero si se puede pedir la cancelacion para que el hilo pare.
+            running = True
         if running:
-            worker.request_cancel()
-            worker.wait(3000)
+            try:
+                worker.request_cancel()
+                worker.wait(3000)
+            except RuntimeError:
+                # El worker murio entre medias; no hay nada que esperar.
+                logger.debug("Download worker already gone", exc_info=True)
 
     def closeEvent(self, event):
         self._abort_download()

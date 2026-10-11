@@ -61,7 +61,8 @@ def test_restart_process_passes_adapter_flags_to_popen():
 
 def test_restart_process_does_not_raise_on_failure():
     with patch("main.subprocess.Popen", side_effect=OSError("boom")):
-        _restart_process()  # must not raise
+        result = _restart_process()  # must not raise
+    assert result in (None, False)
 
 
 def test_single_instance_lock_acquire_and_release(tmp_path, monkeypatch):

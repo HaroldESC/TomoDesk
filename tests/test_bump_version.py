@@ -29,10 +29,10 @@ class TestCurrentVersion:
 
 class TestValidateSemver:
     def test_accepts_patch_component(self, bump):
-        bump.validate_semver("1.0.1")
+        assert bump.validate_semver("1.0.1") is None
 
     def test_accepts_minor_component(self, bump):
-        bump.validate_semver("2.14.3")
+        assert bump.validate_semver("2.14.3") is None
 
     def test_rejects_missing_patch(self, bump):
         with pytest.raises(ValueError):

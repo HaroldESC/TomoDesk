@@ -1,4 +1,12 @@
-import pytest
+"""Benchmarks that also assert the invariants of each operation.
+
+The assertions are per-invocation invariants, never accumulated counters,
+because ``benchmark`` runs the callable several times.
+"""
+import json
+import os
+import tempfile
+import threading
 
 
 class TestEmbeddingCacheBenchmark:
@@ -10,11 +18,21 @@ class TestEmbeddingCacheBenchmark:
             cache.put(f"text_{i}", [float(i)] * 384)
 
         def query_cache():
+            hits = 0
+            misses = 0
             for i in range(200):
-                cache.get(f"text_{i % 100}")
-                cache.get(f"never_cached_{i}")
+                if cache.get(f"text_{i % 100}") is not None:
+                    hits += 1
+                if cache.get(f"never_cached_{i}") is None:
+                    misses += 1
+            return hits, misses
 
-        benchmark(query_cache)
+        assert benchmark(query_cache) == (200, 200)
+        # Leer no cambia el tamano ni ensucia el contenido.
+        assert cache.get_stats()["size"] == 100
+        assert cache.get("text_0") == [0.0] * 384
+        assert cache.get("text_99") == [99.0] * 384
+        assert cache.get("never_cached_0") is None
 
     def test_eviction_overhead(self, benchmark):
         from src.memory.chroma_manager import _EmbeddingCache
@@ -27,16 +45,27 @@ class TestEmbeddingCacheBenchmark:
 
         benchmark(evict_loop)
 
+        # Ventana LRU exacta: solo sobreviven las 50 ultimas insertadas.
+        assert cache.get_stats()["size"] == 50
+        assert cache.get_stats()["max_size"] == 50
+        alive = [i for i in range(200) if cache.get(f"text_{i}") is not None]
+        assert alive == list(range(150, 200))
+        assert cache.get("text_149") is None
+        assert cache.get("text_199") == [199.0] * 384
+
     def test_thread_safety_overhead(self, benchmark):
         from src.memory.chroma_manager import _EmbeddingCache
-        import threading
 
         cache = _EmbeddingCache(max_size=1000)
+        errors = []
 
         def worker():
-            for i in range(50):
-                cache.put(f"t_{i}", [1.0] * 384)
-                cache.get(f"t_{i}")
+            try:
+                for i in range(50):
+                    cache.put(f"t_{i}", [1.0] * 384)
+                    cache.get(f"t_{i}")
+            except Exception as exc:  # pragma: no cover - solo con carrera real
+                errors.append(exc)
 
         def run_concurrent():
             threads = [threading.Thread(target=worker) for _ in range(4)]
@@ -47,13 +76,15 @@ class TestEmbeddingCacheBenchmark:
 
         benchmark(run_concurrent)
 
+        assert errors == []
+        # 4 hilos escriben las mismas 50 claves: no se duplican ni se pierden.
+        assert cache.size == 50
+        assert all(cache.get(f"t_{i}") == [1.0] * 384 for i in range(50))
+
 
 class TestBatchLoggingBenchmark:
     def test_batch_vs_individual(self, benchmark):
         from src.memory.database import DatabaseManager
-        import tempfile
-        import os
-        import json
 
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
@@ -71,15 +102,35 @@ class TestBatchLoggingBenchmark:
                     rows,
                 )
 
+            before = db.execute(
+                "SELECT COUNT(*) AS c FROM interaction_log"
+            ).fetchone()["c"]
             benchmark(run_batch)
+            db.commit()
+            after = db.execute(
+                "SELECT COUNT(*) AS c FROM interaction_log"
+            ).fetchone()["c"]
 
+            # Cada round inserta un lote completo de 100 filas.
+            delta = after - before
+            assert delta >= 100 and delta % 100 == 0
+
+            distinct = db.execute(
+                "SELECT COUNT(DISTINCT data_json) AS c FROM interaction_log"
+            ).fetchone()["c"]
+            assert distinct == 1  # todas las filas del lote son identicas
+            assert db.execute(
+                "SELECT COUNT(*) AS c FROM interaction_log WHERE event_type='system_event'"
+            ).fetchone()["c"] == delta
+
+            # Cerrar antes de que el temporal se borre: en Windows el WAL
+            # de SQLite mantiene el fichero abierto.
             db.close()
+
+        db.close()
 
     def test_individual_inserts(self, benchmark):
         from src.memory.database import DatabaseManager
-        import tempfile
-        import os
-        import json
 
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
@@ -94,6 +145,19 @@ class TestBatchLoggingBenchmark:
                     )
 
             benchmark(run_individual)
+            db.commit()
+
+            payloads = {
+                r["data_json"]
+                for r in db.execute("SELECT data_json FROM interaction_log")
+            }
+            # Exactamente 100 cargas distintas: una por fila, a diferencia
+            # del lote, que produce una sola carga repetida.
+            assert payloads == {json.dumps({"detail": f"benchmark {i}"}) for i in range(100)}
+            total = db.execute(
+                "SELECT COUNT(*) AS c FROM interaction_log"
+            ).fetchone()["c"]
+            assert total >= 100 and total % 100 == 0
 
             db.close()
 
@@ -107,10 +171,15 @@ class TestQueryCacheBenchmark:
             cache.put("col", f"query_{i}", 5, [{"id": f"doc_{i}"}])
 
         def query_hits():
-            for i in range(50):
-                cache.get("col", f"query_{i}", 5)
+            return [cache.get("col", f"query_{i}", 5) for i in range(50)]
 
-        benchmark(query_hits)
+        assert benchmark(query_hits) == [[{"id": f"doc_{i}"}] for i in range(50)]
+        assert cache.get_stats()["size"] == 50
+        assert cache.get_stats()["max_size"] == 100
+        assert cache.get_stats()["ttl_seconds"] == 300
+        # La clave incluye n_results: otro limite es otro miss.
+        assert cache.get("col", "query_0", 6) is None
+        assert cache.get("other_col", "query_0", 5) is None
 
     def test_uncached_queries(self, benchmark):
         from src.memory.chroma_manager import _QueryCache
@@ -120,10 +189,12 @@ class TestQueryCacheBenchmark:
             cache.put("col", f"q{i}", 5, [{"id": "x"}])
 
         def miss_queries():
-            for i in range(100):
-                cache.get("col", f"unknown_{i}", 5)
+            return [cache.get("col", f"unknown_{i}", 5) for i in range(100)]
 
-        benchmark(miss_queries)
+        assert benchmark(miss_queries) == [None] * 100
+        # Un miss nunca inserta: el tamano se queda en las 10 previas.
+        assert cache.size == 10
+        assert cache.get_stats()["size"] == 10
 
     def test_put_and_invalidate(self, benchmark):
         from src.memory.chroma_manager import _QueryCache
@@ -133,16 +204,20 @@ class TestQueryCacheBenchmark:
         def write_and_invalidate():
             for i in range(20):
                 cache.put("col", f"q{i}", 5, [{"id": str(i)}])
+            assert cache.size == 20
             cache.invalidate_all()
+            assert cache.size == 0
 
         benchmark(write_and_invalidate)
+
+        assert cache.size == 0
+        assert cache.get("col", "q0", 5) is None
+        assert cache.get("col", "q19", 5) is None
 
 
 class TestHasRecentSuggestionBenchmark:
     def test_has_recent_suggestion(self, benchmark):
         from src.memory.database import DatabaseManager
-        import tempfile
-        import os
 
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = os.path.join(tmpdir, "test.db")
@@ -162,6 +237,19 @@ class TestHasRecentSuggestionBenchmark:
                 )
                 return bool(len(rows.fetchall()))
 
-            benchmark(query)
+            assert benchmark(query) is True
+            assert db.execute(
+                "SELECT COUNT(*) AS c FROM episodic_log WHERE source='suggestion'"
+            ).fetchone()["c"] == 10
+
+            # Control negativo determinista: al alejar los timestamps, la
+            # consulta debe dejar de encontrar nada. Sin esto, query podria
+            # devolver True siempre y el test pasaria igual.
+            db.execute(
+                "UPDATE episodic_log SET timestamp = datetime('now','-5 hours') "
+                "WHERE source='suggestion'"
+            )
+            db.commit()
+            assert query() is False
 
             db.close()

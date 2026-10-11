@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from src.memory.database import DatabaseManager
@@ -73,6 +75,11 @@ def test_insert_and_read_interaction(mem):
     mem2 = mem  # reuse to verify no crash on second call
     mem2.log_interaction("user_message", {"text": "again"})
 
+    rows = mem._db.execute("SELECT event_type, data_json FROM interaction_log").fetchall()
+    assert len(rows) == 3
+    payloads = {r["data_json"] for r in rows}
+    assert json.dumps({"text": "again"}) in payloads
+
 
 def test_insert_and_read_episodic_log(mem):
     doc_id = mem.add_episodic_memory("Test summary", 0.8, "manual")
@@ -86,6 +93,10 @@ def test_insert_and_read_episodic_log(mem):
 class TestBatchInteractionLog:
     def test_batch_empty(self, mem):
         mem.log_interactions_batch([])
+        # Invariante: una lista vacia no inserta nada.
+        assert mem._db.execute(
+            "SELECT COUNT(*) AS c FROM interaction_log"
+        ).fetchone()["c"] == 0
 
     def test_batch_single_event(self, mem):
         mem.log_interactions_batch([("test_event", {"key": "value"})])
@@ -132,6 +143,10 @@ class TestExecuteMany:
     def test_execute_many_empty(self, db):
         db.execute_many("INSERT INTO interaction_log (event_type, data_json) VALUES (?, ?)", [])
         db.commit()
+        # Invariante: lista vacia no inserta.
+        assert db.execute(
+            "SELECT COUNT(*) AS c FROM interaction_log"
+        ).fetchone()["c"] == 0
 
     def test_execute_many_large_batch(self, db):
         params = [(f"bulk_{i}", f'{{"n": {i}}}') for i in range(100)]

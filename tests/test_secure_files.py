@@ -9,6 +9,7 @@ from src.config.secure_files import secure_file
 def test_secure_file_missing_path_does_not_raise(tmp_path):
     missing = tmp_path / "does_not_exist.txt"
     secure_file(missing)
+    assert not missing.exists()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="POSIX-only behavior")
