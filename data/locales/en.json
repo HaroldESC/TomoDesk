@@ -220,6 +220,7 @@
       "sprite_frame_labels": "Show frame labels (state, frame index)",
       "sprite_delete": "Delete sprite",
       "sprite_delete_confirm": "Delete sprite \"{name}\"?\nThis action cannot be undone.",
+      "sprite_delete_bundled": "Bundled sprites cannot be deleted.",
       "character_personality": "Personality",
       "name": "Name:",
       "traits": "Traits:",
@@ -327,8 +328,7 @@
       "debug_prompts": "Log prompts sent to the model (to tomodesk.log)",
       "log_open_folder": "Open logs folder",
       "advanced_about": "About",
-      "tutorial_play": "Play initial tutorial",
-      "save": "Save",
+      "tutorial_play": "Play initial tutorial",      "save": "Save",
       "close": "Close",
       "cancel": "Cancel"
     }
@@ -372,6 +372,11 @@
     "mood_curiosity": "☀ {value:.2f}",
     "mood_closeness": "🤝 {value:.2f}",
     "mood_connection": "🔗 {value:.2f}",
+    "mood_name_happiness": "Happiness",
+    "mood_name_energy": "Energy",
+    "mood_name_curiosity": "Curiosity",
+    "mood_name_closeness": "Closeness",
+    "mood_name_connection": "Connection",
     "proactive_on": "Proactive: ON",
     "proactive_off": "Proactive: OFF",
     "ready_message": "{name} is ready!",
@@ -396,7 +401,8 @@
     "welcome_message": "Running in the background"
   },
   "personality": {
-    "pack_installed": "Personality pack \"{name}\" installed! Restart to apply changes."
+    "pack_installed": "Personality pack \"{name}\" installed! Restart to apply changes.",
+    "pack_install_error": "Could not install the personality pack: {error}"
   },
   "privacy": {
     "consent_title": "Privacy",

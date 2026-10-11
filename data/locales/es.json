@@ -220,6 +220,7 @@
       "sprite_frame_labels": "Mostrar etiquetas de frame (estado, índice)",
       "sprite_delete": "Eliminar sprite",
       "sprite_delete_confirm": "¿Eliminar el sprite \"{name}\"?\nEsta acción no se puede deshacer.",
+      "sprite_delete_bundled": "Los sprites incluidos no se pueden eliminar.",
       "character_personality": "Personalidad",
       "name": "Nombre:",
       "traits": "Rasgos:",
@@ -372,6 +373,11 @@
     "mood_curiosity": "☀ {value:.2f}",
     "mood_closeness": "🤝 {value:.2f}",
     "mood_connection": "🔗 {value:.2f}",
+    "mood_name_happiness": "Felicidad",
+    "mood_name_energy": "Energía",
+    "mood_name_curiosity": "Curiosidad",
+    "mood_name_closeness": "Cercanía",
+    "mood_name_connection": "Conexión",
     "proactive_on": "Proactivo: ON",
     "proactive_off": "Proactivo: OFF",
     "ready_message": "¡{name} está listo!",
@@ -396,7 +402,8 @@
     "welcome_message": "Ejecutándose en segundo plano"
   },
   "personality": {
-    "pack_installed": "¡Paquete de personalidad \"{name}\" instalado! Reinicia para aplicar los cambios."
+    "pack_installed": "¡Paquete de personalidad \"{name}\" instalado! Reinicia para aplicar los cambios.",
+    "pack_install_error": "No se pudo instalar el paquete de personalidad: {error}"
   },
   "privacy": {
     "consent_title": "Privacidad",

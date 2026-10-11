@@ -9,6 +9,10 @@ import pytest
 from src.config.i18n import I18nManager
 
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+LOCALES_DIR = PROJECT_ROOT / "data" / "locales"
+
+
 @pytest.fixture
 def locale_dir():
     """Create temporary locale directory with en.json and es.json."""
@@ -31,6 +35,49 @@ def locale_dir():
         (locale_path / "es.json").write_text(json.dumps(es_data), encoding="utf-8")
 
         yield locale_path
+
+
+def test_default_used_when_key_missing(locale_dir):
+    i18n = I18nManager(str(locale_dir))
+    assert i18n.t("does.not.exist", default="Fallback text") == "Fallback text"
+
+
+def test_default_is_formatted_with_kwargs(locale_dir):
+    i18n = I18nManager(str(locale_dir))
+    result = i18n.t("nope", default="Hello {name}", name="Ana")
+    assert result == "Hello Ana"
+
+
+def test_default_ignored_when_key_exists(locale_dir):
+    i18n = I18nManager(str(locale_dir))
+    assert i18n.t("greeting", default="unused") == "Hello"
+
+
+def test_missing_key_without_default_returns_key(locale_dir):
+    i18n = I18nManager(str(locale_dir))
+    assert i18n.t("totally.unknown") == "totally.unknown"
+
+
+class TestMoodLabels:
+    """Los nombres de mood salen de los locales, no de literales en inglés."""
+
+    @pytest.mark.parametrize("lang", ["en", "es"])
+    def test_mood_names_are_translated(self, lang):
+        from src.config.i18n import I18nManager as M
+
+        i18n = M(str(LOCALES_DIR), default_lang=lang)
+        i18n.set_language(lang)
+        for key in ("happiness", "energy", "curiosity", "closeness", "connection"):
+            label = i18n.t(f"status.mood_name_{key}")
+            # Nunca debe devolver la claveave cruda.
+            assert label != f"status.mood_name_{key.replace('_name','')}"
+            assert label.strip() != ""
+
+    def test_mood_value_lines_render_value(self):
+        i18n = I18nManager(str(LOCALES_DIR), default_lang="en")
+        i18n.set_language("en")
+        line = i18n.t("status.mood_happiness", value=0.75)
+        assert "0.75" in line
 
 
 def test_load_translations(locale_dir):

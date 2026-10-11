@@ -110,7 +110,15 @@ class I18nManager:
         self.current_lang = lang
         logger.info(f"Switched to language: {lang}")
 
-    def t(self, key: str, **kwargs) -> str:
+    def t(self, key: str, default: str | None = None, **kwargs) -> str:
+        """Traduce ``key``; si no existe usa ``default`` y, en ultimo caso, la clave.
+
+        Args:
+            key: clave en notación punto (``"chat.send"``).
+            default: texto a usar cuando la clave no esta en ningun idioma.
+                Se formatea con los mismos ``kwargs``.
+            **kwargs: valores para los placeholders ``{...}`` de la plantilla.
+        """
         parts = key.split('.')
         current = self.translations.get(self.current_lang, {})
         for part in parts:
@@ -135,6 +143,12 @@ class I18nManager:
 
         if current is None or not isinstance(current, str):
             logger.debug(f"Missing translation for key: {key}")
+            if default is not None:
+                try:
+                    return default.format(**kwargs)
+                except Exception as e:
+                    logger.error(f"Error formatting default for key '{key}': {e}")
+                    return default
             return key
 
         try:
