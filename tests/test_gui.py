@@ -45,6 +45,81 @@ class TestChatWidget:
         widget.add_message("system", "System message")
         assert "System message" in widget.toPlainText()
 
+    @staticmethod
+    def _first_bubble(widget):
+        """Devuelve la primera MessageBubble del chat (o None)."""
+        from src.gui.widgets.chat_widget import MessageBubble
+        item = widget.message_layout.itemAt(0)
+        row = item.widget() if item else None
+        if row is None or row.layout() is None:
+            return None
+        for j in range(row.layout().count()):
+            child = row.layout().itemAt(j).widget()
+            if isinstance(child, MessageBubble):
+                return child
+        return None
+
+    def test_autoscroll_follows_new_messages(self, qtbot, mock_i18n):
+        """El chat debe quedarse pegado al fondo al desbordarse el área."""
+        from src.gui.widgets.chat_widget import ChatWidget
+        widget = ChatWidget(i18n=mock_i18n)
+        widget.resize(420, 320)
+        qtbot.addWidget(widget)
+        widget.show()
+
+        for i in range(30):
+            widget.add_message(
+                "user",
+                f"Mensaje {i} con texto suficiente para ocupar varias lineas",
+            )
+
+        # El rango solo se recalcula cuando el layout procesa el LayoutRequest.
+        sb = widget.scroll_area.verticalScrollBar()
+        qtbot.waitUntil(lambda: sb.maximum() > 0, timeout=2000)
+        qtbot.wait(100)  # deja correr el QTimer.singleShot(0) del autoscroll
+
+        assert sb.maximum() > 0, "el historial debería desbordar el viewport"
+        assert sb.value() == sb.maximum()
+
+    def test_no_autoscroll_when_user_scrolled_up(self, qtbot, mock_i18n):
+        """Si el usuario lee más arriba, un mensaje nuevo no le arrastra."""
+        from src.gui.widgets.chat_widget import ChatWidget
+        widget = ChatWidget(i18n=mock_i18n)
+        widget.resize(420, 320)
+        qtbot.addWidget(widget)
+        widget.show()
+
+        for i in range(30):
+            widget.add_message("assistant", f"Respuesta {i} bastante larga de verdad")
+
+        sb = widget.scroll_area.verticalScrollBar()
+        qtbot.waitUntil(lambda: sb.maximum() > 0, timeout=2000)
+        qtbot.wait(100)
+        assert sb.maximum() > 0
+
+        max_before = sb.maximum()
+        sb.setValue(0)
+
+        widget.add_message("assistant", "Un mensaje nuevo que no debe arrastrar la vista")
+        qtbot.waitUntil(lambda: sb.maximum() > max_before, timeout=2000)
+        qtbot.wait(100)
+
+        assert sb.value() <= 4
+
+    def test_bubble_text_is_selectable(self, qtbot, mock_i18n):
+        """Sin flags de selección no hay menú contextual ni copiado."""
+        from src.gui.widgets.chat_widget import ChatWidget
+        widget = ChatWidget(i18n=mock_i18n)
+        qtbot.addWidget(widget)
+        widget.add_message("assistant", "Texto que se debe poder copiar")
+
+        bubble = self._first_bubble(widget)
+        assert bubble is not None
+        flags = bubble.label.textInteractionFlags()
+        assert flags & Qt.TextSelectableByMouse
+        assert bubble.label.accessibleName() == "assistant"
+        assert bubble.label.accessibleDescription() == "Texto que se debe poder copiar"
+
 
 class TestNotesDialog:
     def test_open_and_close(self, qtbot, mock_memory_manager, mock_i18n):

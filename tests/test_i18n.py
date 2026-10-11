@@ -310,3 +310,73 @@ def test_keys_used_by_the_ui_exist():
 
     missing = sorted(key for key in used if key not in defined)
     assert not missing, f"claves usadas y no definidas: {missing}"
+
+
+# Claves anadidas al corregir textos hardcodeados y estados del asistente.
+NEW_UI_KEYS = [
+    "app.about_powered_by",
+    "chat.input_placeholder",
+    "chat.commands_tooltip",
+    "setup.cancelling",
+]
+
+
+def _lookup(data, key):
+    current = data
+    for part in key.split("."):
+        assert isinstance(current, dict), f"{key} no es una hoja"
+        assert part in current, f"falta la clave {key}"
+        current = current[part]
+    return current
+
+
+@pytest.mark.parametrize("key", NEW_UI_KEYS)
+@pytest.mark.parametrize("lang", ["en", "es"])
+def test_new_keys_exist_and_are_translated(key, lang):
+    """Las claves nuevas existen en ambos locales y no son la clave cruda."""
+    data = json.loads((LOCALES_DIR / f"{lang}.json").read_text(encoding="utf-8"))
+    text = _lookup(data, key)
+    assert isinstance(text, str)
+    assert text.strip() != ""
+    assert text != key
+
+
+@pytest.mark.parametrize("lang", ["en", "es"])
+def test_input_placeholder_does_not_promise_ctrl_enter(lang):
+    """El input es de una sola linea: Enter ya envia, no existe Ctrl+Enter."""
+    i18n = I18nManager(str(LOCALES_DIR), default_lang="en")
+    i18n.set_language(lang)
+    placeholder = i18n.t("chat.input_placeholder")
+    assert "Ctrl+Enter" not in placeholder
+    assert placeholder != "chat.input_placeholder"
+    i18n.set_language("en" if lang == "es" else "es")
+    assert i18n.t("chat.input_placeholder") != placeholder
+
+
+@pytest.mark.parametrize("lang", ["en", "es"])
+def test_commands_tooltip_lists_the_real_commands(lang):
+    """El tooltip del input debe listar comandos que existen de verdad."""
+    i18n = I18nManager(str(LOCALES_DIR), default_lang="en")
+    i18n.set_language(lang)
+    tooltip = i18n.t("chat.commands_tooltip")
+    assert tooltip != "chat.commands_tooltip"
+    for command in ("/help", "/note", "/remind", "/remember", "/memories",
+                    "/mood", "/context", "/proactive", "/model", "/debug",
+                    "/exit"):
+        assert command in tooltip, f"{command} no aparece en el tooltip"
+
+
+@pytest.mark.parametrize("lang", ["en", "es"])
+def test_commands_tooltip_only_lists_known_commands(lang):
+    """Cada comando del tooltip existe en el despachador de ``commands``."""
+    source = (
+        PROJECT_ROOT / "src" / "system" / "commands.py"
+    ).read_text(encoding="utf-8")
+    known = set(re.findall(r'"/([a-z_]+)":\s*cmd_', source))
+
+    i18n = I18nManager(str(LOCALES_DIR), default_lang="en")
+    i18n.set_language(lang)
+    listed = set(re.findall(r"/([a-z_]+)", i18n.t("chat.commands_tooltip")))
+
+    assert listed, "el tooltip deberia listar comandos"
+    assert listed <= known, f"comandos inexistentes en el tooltip: {listed - known}"

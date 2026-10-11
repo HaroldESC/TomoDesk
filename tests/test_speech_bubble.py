@@ -1,5 +1,7 @@
 import os
 
+from unittest.mock import MagicMock
+
 import pytest
 
 pytestmark = [
@@ -10,10 +12,31 @@ pytestmark = [
     pytest.mark.usefixtures("qapp"),
 ]
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QPoint, QPointF
+from PySide6.QtGui import QWheelEvent
 from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication
 
 from src.gui.widgets.speech_bubble import SpeechBubble
+
+
+def _wheel_event(angle_y: int) -> QWheelEvent:
+    """
+    Construye un QWheelEvent vertical.
+
+    Qt usa angleDelta().y() negativo para "rueda hacia abajo" (avanzar en el
+    contenido) y positivo para "rueda hacia arriba" (retroceder).
+    """
+    return QWheelEvent(
+        QPointF(10.0, 10.0),   # pos
+        QPointF(10.0, 10.0),   # globalPos
+        QPoint(0, 0),          # pixelDelta
+        QPoint(0, angle_y),    # angleDelta
+        Qt.NoButton,
+        Qt.NoModifier,
+        Qt.NoScrollPhase,
+        False,                # inverted
+    )
 
 
 def test_bubble_creation(qapp):
@@ -232,3 +255,106 @@ def test_radius_never_exceeds_available_space(qapp):
     bubble.resize(120, 60)  # narrow: radius must be capped
     path = bubble._build_path()
     assert path is not None
+
+
+def test_wheel_event_scrolls_content(qapp, qtbot):
+    """El QTextEdit es transparente al ratón: la rueda debe reenviarse a él."""
+    bubble = SpeechBubble(max_lines=0)  # sin recorte por líneas
+    long_text = "\n".join(
+        f"linea {i} con texto suficientemente largo" for i in range(40)
+    )
+    bubble.show_text(long_text, animate=False)
+    bubble.show()
+
+    bar = bubble.text_edit.verticalScrollBar()
+    qtbot.waitUntil(lambda: bar.maximum() > 0, timeout=2000)
+    assert bar.maximum() > 0, "el texto debería desbordar los 150 px máximos"
+
+    before = bar.value()
+    QApplication.sendEvent(bubble, _wheel_event(-120))  # rueda hacia abajo
+    QTest.qWait(20)
+    after_down = bar.value()
+    assert after_down > before, "la rueda hacia abajo debe avanzar el contenido"
+
+    QApplication.sendEvent(bubble, _wheel_event(120))   # rueda hacia arriba
+    QTest.qWait(20)
+    assert bar.value() < after_down
+    bubble.hide_bubble()
+
+
+def test_full_text_kept_for_tooltip(qapp):
+    """El recorte afecta solo a lo visible: lo íntegro se recuerda y se puede leer."""
+    bubble = SpeechBubble(max_lines=2)
+    long_text = "line1\nline2\nline3\nline4"
+    bubble.show_text(long_text, animate=False)
+
+    assert bubble._full_text == long_text
+    assert "line3" not in bubble.text_edit.toPlainText()
+    assert bubble.toolTip() == long_text
+
+    bubble.hide_bubble()
+    assert bubble.toolTip() == ""
+
+
+def test_thinking_uses_i18n(qapp):
+    i18n = MagicMock()
+    i18n.t = MagicMock(side_effect=lambda key, **kw: "Pensando...")
+    bubble = SpeechBubble(i18n=i18n)
+    bubble.show_thinking()
+
+    assert bubble.text_edit.toPlainText() == "Pensando..."
+    i18n.t.assert_called_with("chat.thinking")
+    bubble.hide_bubble()
+
+
+def test_copy_shortcut(qapp):
+    bubble = SpeechBubble()
+    bubble.show_text("Texto para copiar", animate=False)
+    QTest.qWait(20)
+
+    clipboard = QApplication.clipboard()
+    # El portapapeles de Windows es un recurso global: si otro proceso lo
+    # tiene tomado, Qt no puede escribir y se reintenta la pulsación real.
+    for _ in range(20):
+        QTest.keyClick(bubble, Qt.Key_C, Qt.ControlModifier)
+        if clipboard.text() == "Texto para copiar":
+            break
+        QTest.qWait(25)
+
+    assert clipboard.text() == "Texto para copiar"
+    bubble.hide_bubble()
+
+
+def test_set_typewriter_interval_updates_timer(qapp):
+    """El intervalo se cambia en caliente (lo empuja el diálogo de Ajustes)."""
+    bubble = SpeechBubble(typewriter_interval_ms=30)
+    assert bubble._anim_timer.interval() == 30
+
+    bubble.set_typewriter_interval(80)
+
+    assert bubble.typewriter_interval_ms == 80
+    assert bubble._anim_timer.interval() == 80
+    bubble.hide_bubble()
+
+
+def test_set_typewriter_interval_applies_while_typing(qapp):
+    bubble = SpeechBubble(typewriter_interval_ms=30)
+    bubble.show_text("Hola a todos", animate=True)
+    QTest.qWait(10)
+
+    bubble.set_typewriter_interval(5)
+
+    assert bubble._anim_timer.isActive()
+    assert bubble._anim_timer.interval() == 5
+    bubble.hide_bubble()
+
+
+@pytest.mark.parametrize("bad", [0, -1, -250])
+def test_set_typewriter_interval_ignores_non_positive(qapp, bad):
+    """Un intervalo <= 0 no debe dejar el QTimer disparando en bucle cerrado."""
+    bubble = SpeechBubble(typewriter_interval_ms=30)
+
+    bubble.set_typewriter_interval(bad)  # must not raise
+
+    assert bubble.typewriter_interval_ms == 30
+    assert bubble._anim_timer.interval() == 30

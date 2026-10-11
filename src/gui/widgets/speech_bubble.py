@@ -3,7 +3,9 @@ from enum import Enum
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QBrush, QColor, QGuiApplication, QPainter, QPainterPath, QPen
-from PySide6.QtWidgets import QLineEdit, QTextEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QApplication, QLineEdit, QTextEdit, QVBoxLayout, QWidget,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +53,7 @@ class SpeechBubble(QWidget):
         self._drag_pos = None
         self._drag_active = False
         self._full_text = ""
+        self._display_text = ""
         self._anim_index = 0
         self.max_lines = max_lines
         self.fade_delay_ms = fade_delay_ms
@@ -76,9 +79,8 @@ class SpeechBubble(QWidget):
         self.text_edit.setFrameStyle(0)
         self.text_edit.setContentsMargins(0, 0, 0, 0)
         self.text_edit.document().setDocumentMargin(0)
-        self.text_edit.setStyleSheet("QScrollBar:vertical { width: 0px; background: transparent; }"
-                                     "QScrollBar::handle:vertical { background: transparent; }"
-                                     "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }")
+        # El QSS de la scrollbar lo aplica _apply_style() sobre el propio
+        # SpeechBubble (hereda a los hijos); aquí no se pisa con width: 0.
         self._layout.addWidget(self.text_edit)
 
         self.input_edit = QLineEdit(self)
@@ -154,14 +156,23 @@ class SpeechBubble(QWidget):
                 line-height: 1.4;
             }}
             QScrollBar:vertical {{
-                width      : 0px;
+                width      : 6px;
                 background : transparent;
+                border-radius: 3px;
             }}
             QScrollBar::handle:vertical {{
-                background : transparent;
+                background : {self._border_color.name()};
+                border-radius: 3px;
+                min-height : 28px;
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background : {text_color};
             }}
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
                 height : 0px;
+            }}
+            QScrollBar::add-page, QScrollBar::sub-page {{
+                background : transparent;
             }}
             QLineEdit {{
                 background : {input_bg};
@@ -207,6 +218,10 @@ class SpeechBubble(QWidget):
         if doc_h > _MAX_CONTENT_HEIGHT:
             self.text_edit.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
             doc_h = _MAX_CONTENT_HEIGHT
+            # Recortado por altura: el texto íntegro sigue disponible en el
+            # tooltip (además se puede recorrer con la rueda).
+            if self._full_text:
+                self.setToolTip(self._full_text)
         else:
             self.text_edit.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
@@ -296,25 +311,43 @@ class SpeechBubble(QWidget):
         self._fade_timer.stop()
         self._anim_timer.stop()
 
-        if self.max_lines and self.max_lines > 0:
-            lines = text.split("\n")
-            if len(lines) > self.max_lines:
-                text = "\n".join(lines[:self.max_lines]) + "\n..."
-
+        # _full_text SIEMPRE guarda el texto original íntegro: es la fuente
+        # para el tooltip y para copiar; solo se recorta lo que se muestra.
         self._full_text = text
-        if animate and text:
+
+        display_text, truncated = self._truncate_to_lines(text)
+        self._display_text = display_text
+        self.setToolTip(text if truncated else "")
+
+        if animate and display_text:
             self._anim_index = 0
             self.text_edit.setPlainText("")
             self._anim_timer.start()
         else:
-            self.text_edit.setPlainText(text)
-            self._start_fade_timer(text)
+            self.text_edit.setPlainText(display_text)
+            self._start_fade_timer(display_text)
         self.show()
+
+    def _truncate_to_lines(self, text: str) -> tuple[str, bool]:
+        """
+        Recorta el texto al número máximo de líneas visibles.
+
+        :return: tupla (texto a mostrar, True si se ha truncado).
+        """
+        if self.max_lines and self.max_lines > 0:
+            lines = text.split("\n")
+            if len(lines) > self.max_lines:
+                return "\n".join(lines[:self.max_lines]) + "\n...", True
+        return text, False
 
     def show_thinking(self):
         self._fade_timer.stop()
         self._anim_timer.stop()
-        self.text_edit.setPlainText("...")
+        placeholder = self.i18n.t("chat.thinking") if self.i18n else "..."
+        self._full_text = ""
+        self._display_text = placeholder
+        self.setToolTip("")
+        self.text_edit.setPlainText(placeholder)
         self.show()
 
         if self.fade_delay_ms > 0:
@@ -325,6 +358,7 @@ class SpeechBubble(QWidget):
         self._anim_timer.stop()
         self.hide_inline_input()
         self.hide()
+        self.setToolTip("")
         self.text_edit.clear()
 
     def set_style(self, style: str):
@@ -333,6 +367,17 @@ class SpeechBubble(QWidget):
             self._apply_style()
         except ValueError:
             logger.warning("Unknown bubble style: %r", style)
+
+    def set_typewriter_interval(self, interval_ms: int) -> None:
+        """Cambia la velocidad del efecto typewriter y reajusta el temporizador.
+
+        Se ignora cualquier valor <= 0: un QTimer con intervalo 0 dispararía
+        el tick en bucle cerrado y dejaría la interfaz inutilizable.
+        """
+        if interval_ms <= 0:
+            return
+        self.typewriter_interval_ms = interval_ms
+        self._anim_timer.setInterval(interval_ms)
 
     def show_inline_input(self):
         self._fade_timer.stop()
@@ -359,12 +404,35 @@ class SpeechBubble(QWidget):
 
     def _on_anim_tick(self):
         self._anim_index += 1
-        if self._anim_index <= len(self._full_text):
-            self.text_edit.setPlainText(self._full_text[:self._anim_index])
+        if self._anim_index <= len(self._display_text):
+            self.text_edit.setPlainText(self._display_text[:self._anim_index])
         else:
             self._anim_timer.stop()
-            self._start_fade_timer(self._full_text)
+            self._start_fade_timer(self._display_text)
             self.typewriter_finished.emit()
+
+    def wheelEvent(self, event):
+        """
+        Reenvía el desplazamiento de la rueda al QTextEdit interno.
+
+        El text_edit es WA_TransparentForMouseEvents (imprescindible para no
+        romper el arrastre de la ventana), así que la rueda nunca le llega:
+        sin esto el contenido recortado a _MAX_CONTENT_HEIGHT era
+        irrecuperable.
+        """
+        delta = event.angleDelta().y()
+        if delta:
+            bar = self.text_edit.verticalScrollBar()
+            bar.setValue(bar.value() - delta)
+        event.accept()
+
+    def keyPressEvent(self, event):
+        """Ctrl+C copia al portapapeles el texto que muestra la burbuja."""
+        if event.key() == Qt.Key_C and (event.modifiers() & Qt.ControlModifier):
+            QApplication.clipboard().setText(self.text_edit.toPlainText())
+            event.accept()
+            return
+        super().keyPressEvent(event)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:

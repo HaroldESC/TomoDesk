@@ -535,8 +535,9 @@ def run_gui(config):
                         window._assistant_message_signal.emit(response)
                     except Exception as e:
                         logger.error(f"LLM error: {e}")
-                        overlay._bubble_text_signal.emit(f"Error: {str(e)}", False)
-                        window._system_message_signal.emit(f"[Error: {str(e)}]")
+                        error_msg = i18n.t("chat.error_prefix", error=str(e))
+                        overlay._bubble_text_signal.emit(error_msg, False)
+                        window._system_message_signal.emit(error_msg)
 
                 threading.Thread(target=_do_overlay_chat, daemon=True).start()
 
@@ -551,10 +552,18 @@ def run_gui(config):
             from PySide6.QtWidgets import QDialog
             from src.config.config import get_config_path, save_config
             from src.gui.windows.privacy_consent import PrivacyConsentDialog
-            consent = PrivacyConsentDialog(i18n=i18n, parent=overlay)
+            # El overlay es frameless y siempre encima: colgar el dialogo de
+            # el lo deja tapado. Se usa la ventana principal como padre.
+            consent = PrivacyConsentDialog(
+                parent=window,
+                i18n=i18n,
+                styles=getattr(window, "_styles", None),
+            )
             accepted = consent.exec() == QDialog.Accepted
             privacy["consent_asked"] = True
-            privacy["monitor_active_window"] = bool(accepted)
+            privacy["monitor_active_window"] = bool(
+                accepted and consent.result_value
+            )
             save_config(config, get_config_path())
 
         deps["proactive_engine"].handle_trigger("session_start")

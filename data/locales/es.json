@@ -3,6 +3,7 @@
     "title": "TomoDesk - {name}",
     "about_title": "Acerca de TomoDesk",
     "about_text": "TomoDesk v{version}\n\nCompañero de escritorio y agente IA\n\nPersonaje: {name}\nModelo: {model}\n\nUn compañero privado y local.",
+    "about_powered_by": "Desarrollado con PySide6 y Ollama",
     "model_license_note": "Los modelos de chat pueden tener su propia licencia (p. ej. Meta Llama 3.2 usa la Licencia de Comunidad Llama, no MIT). Ver README para más detalles."
   },
   "menu": {
@@ -34,11 +35,12 @@
     }
   },
   "chat": {
-    "input_placeholder": "Escribe un mensaje... (Ctrl+Enter para enviar)",
+    "input_placeholder": "Escribe un mensaje...",
     "send_button": "Enviar",
-    "thinking": "...",
+    "thinking": "Pensando...",
     "error_prefix": "[Error: {error}]",
-    "clear_system_msg": "Chat limpiado. Memoria a corto plazo reiniciada."
+    "clear_system_msg": "Chat limpiado. Memoria a corto plazo reiniciada.",
+    "commands_tooltip": "Comandos: /help, /note, /remind, /remember, /memories, /mood, /context, /proactive, /episodic, /model, /debug, /clear, /exit. Escribe /help para ver los detalles."
   },
   "commands": {
     "help_text": "Comandos disponibles:\n  /note <título> | <contenido> - Guardar nota\n  /remind <minutos> <mensaje> - Crear recordatorio\n  /remember <texto> - Guardar memoria episódica\n  /memories - Listar memorias episódicas recientes\n  /mood - Mostrar estado de ánimo\n  /context - Mostrar contexto actual\n  /proactive [on|off] - Activar/desactivar comentarios proactivos\n  /model [status|download] - Gestionar el modelo LLM local\n  /debug [on|off] - Registrar el prompt exacto enviado al modelo\n  /help - Mostrar esta ayuda\n  /exit - Salir de TomoDesk",
@@ -309,7 +311,11 @@
       "advanced_about": "Acerca de",
       "tutorial_play": "Reproducir tutorial inicial",
       "save": "Guardar",
-      "close": "Cerrar"
+      "close": "Cerrar",
+      "discard_title": "¿Descartar los cambios?",
+      "discard_body": "Hay cambios sin guardar. ¿Cerrar sin guardarlos?",
+      "discard_confirm": "Descartar",
+      "discard_cancel": "Seguir editando"
     }
   },
   "prompts": {
@@ -403,6 +409,7 @@
     "back": "Atrás",
     "next": "Siguiente",
     "finish": "Finalizar",
-    "cancel": "Cancelar"
+    "cancel": "Cancelar",
+    "cancelling": "Cancelando..."
   }
 }

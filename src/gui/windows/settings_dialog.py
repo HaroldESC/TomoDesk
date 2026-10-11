@@ -779,12 +779,46 @@ class SettingsDialog(QDialog):
                 logger.debug("Download worker already gone", exc_info=True)
 
     def closeEvent(self, event):
+        if not self._confirm_discard():
+            event.ignore()
+            return
+        self._dirty = False
         self._abort_download()
         super().closeEvent(event)
 
     def reject(self):
+        # La tecla Esc no pasa por closeEvent (QDialog llama a reject()), así
+        # que la confirmación hay que repetirla aquí.
+        if not self._confirm_discard():
+            return
+        self._dirty = False
         self._abort_download()
         super().reject()
+
+    def _confirm_discard(self) -> bool:
+        """Pregunta por los cambios sin guardar; True si se puede cerrar.
+
+        Sin cambios pendientes devuelve True directamente (no molesta al
+        usuario con un diálogo que no tiene sentido).
+        """
+        if not self._dirty:
+            return True
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setWindowTitle(self.i18n.t("dialogs.settings.discard_title"))
+        box.setText(self.i18n.t("dialogs.settings.discard_body"))
+        keep_editing = box.addButton(
+            self.i18n.t("dialogs.settings.discard_cancel"),
+            QMessageBox.ButtonRole.RejectRole,
+        )
+        box.addButton(
+            self.i18n.t("dialogs.settings.discard_confirm"),
+            QMessageBox.ButtonRole.AcceptRole,
+        )
+        # Por defecto se conserva lo editado: descartar debe ser explícito.
+        box.setDefaultButton(keep_editing)
+        box.exec()
+        return box.clickedButton() is not keep_editing
 
     def _build_memory_general(self, layout):
         mem = self.config.get("memory", {})
@@ -1494,11 +1528,6 @@ class SettingsDialog(QDialog):
     def _mark_dirty(self):
         if not self._dirty:
             self._dirty = True
-            self._update_close_button_text()
-
-    def _update_close_button_text(self):
-        key = "dialogs.settings.cancel" if self._dirty else "dialogs.settings.close"
-        self._close_btn.setText(self.i18n.t(key))
 
     def _connect_dirty_tracking(self):
         widget_types = [QComboBox, QCheckBox, QSpinBox, QDoubleSpinBox, QSlider, QLineEdit, QTextEdit]
@@ -1506,6 +1535,10 @@ class SettingsDialog(QDialog):
         for t in widget_types:
             widgets.extend(self.findChildren(t))
         for widget in widgets:
+            # El buscador filtra la vista, no es un ajuste: escribir en él no
+            # debe volver "sucio" el diálogo ni disparar la confirmación al cerrar.
+            if widget is self._search_field or widget.objectName() == "search_field":
+                continue
             if isinstance(widget, QComboBox):
                 widget.currentIndexChanged.connect(self._mark_dirty)
             elif isinstance(widget, QCheckBox):
@@ -1518,29 +1551,41 @@ class SettingsDialog(QDialog):
     # ── save ─────────────────────────────────────────────────────────────────
 
     def _save_settings(self):
+        # Se valida ANTES de mutar nada: si el endpoint del LLM es inválido
+        # la configuración debe quedarse exactamente como estaba.
+        if not self._validate_mind():
+            return
+
+        new_lang = self.ui_lang.currentText()
+        old_lang = self.i18n.get_current_language()
+
         self._save_appearance()
         self._save_character()
-        if not self._save_mind():
-            return
+        self._save_mind()
         self._save_behavior()
         self._save_advanced()
         self._save_context()
 
         save_config(self.config, get_config_path())
 
+        # Guardado correcto: ya no hay nada que confirmar al cerrar.
+        self._dirty = False
+        self._apply_language_change(new_lang, old_lang)
         self._apply_theme()
         self.close()
 
-    def _save_appearance(self):
-        ui = self.config.setdefault("ui", {})
-        new_lang = self.ui_lang.currentText()
-        old_lang = self.i18n.get_current_language()
-        ui["language"] = new_lang
-        ui["language_set"] = new_lang != "auto"
+    def _apply_language_change(self, new_lang: str, old_lang: str) -> None:
+        """Cambia el idioma en vivo, pero solo cuando el guardado ya es un hecho."""
         resolved = self.i18n.detect_language(new_lang)
         if resolved != old_lang:
             self.i18n.set_language(resolved)
             self.language_changed.emit()
+
+    def _save_appearance(self):
+        ui = self.config.setdefault("ui", {})
+        new_lang = self.ui_lang.currentText()
+        ui["language"] = new_lang
+        ui["language_set"] = new_lang != "auto"
         ui["theme"] = self.ui_theme.currentText()
         ui["character_size"] = self.ui_char_size.value()
         ui["overlay_enabled"] = self.ui_overlay.isChecked()
@@ -1555,6 +1600,22 @@ class SettingsDialog(QDialog):
         hints = ui.setdefault("hints", {})
         hints["enabled"] = self.ui_hints_enabled.isChecked()
         hints["delay_ms"] = self.ui_hints_delay.value()
+
+        self._push_overlay_config(ui)
+
+    def _push_overlay_config(self, ui):
+        """Empuja los ajustes de apariencia (burbuja + opacidad) al overlay vivo.
+
+        Sin esto los ajustes de burbuja y opacidad solo se notarían tras
+        reiniciar la aplicación.
+        """
+        overlay = getattr(self.parent(), "overlay", None)
+        if overlay is None:
+            return
+        if hasattr(overlay, "apply_bubble_config"):
+            overlay.apply_bubble_config(ui)
+        if hasattr(overlay, "apply_overlay_opacity"):
+            overlay.apply_overlay_opacity(ui.get("overlay_opacity", 1.0))
 
     def _save_character(self):
         ui = self.config.setdefault("ui", {})
@@ -1608,21 +1669,29 @@ class SettingsDialog(QDialog):
             else:
                 engine.pack_manager.set_active_pack(None)
 
-    def _save_mind(self):
-        llm = self.config.setdefault("llm", {})
-        llm["provider"] = self.llm_provider.currentText()
-        llm["model"] = self.llm_model.text()
-        llm["endpoint"] = self.llm_endpoint.text()
-        llm["timeout"] = self.llm_timeout.value()
-
-        if llm["provider"] == "openai_compatible" and not validate_llm_endpoint(llm["endpoint"]):
-            logger.warning("Invalid LLM endpoint URL: %s", llm["endpoint"])
+    def _validate_mind(self) -> bool:
+        """Comprueba el endpoint del LLM sin escribir nada en la config."""
+        endpoint = self.llm_endpoint.text()
+        if self.llm_provider.currentText() == "openai_compatible" and \
+                not validate_llm_endpoint(endpoint):
+            logger.warning("Invalid LLM endpoint URL: %s", endpoint)
             QMessageBox.warning(
                 self,
                 self.i18n.t("dialogs.settings.title"),
                 self.i18n.t("dialogs.settings.invalid_endpoint"),
             )
             return False
+        return True
+
+    def _save_mind(self):
+        if not self._validate_mind():
+            return False
+
+        llm = self.config.setdefault("llm", {})
+        llm["provider"] = self.llm_provider.currentText()
+        llm["model"] = self.llm_model.text()
+        llm["endpoint"] = self.llm_endpoint.text()
+        llm["timeout"] = self.llm_timeout.value()
 
         api_key_value = self.llm_api_key.text()
         if api_key_value:

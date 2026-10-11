@@ -2,7 +2,34 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 from main import _init_pack_manager
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+LOCALES_DIR = PROJECT_ROOT / "data" / "locales"
+
+
+@pytest.fixture
+def mock_config():
+    return {
+        "personality": {"name": "Tomo"},
+        "llm": {"model": "llama3.2:1b", "endpoint": "http://localhost:11434"},
+        "modes": {},
+    }
+
+
+@pytest.fixture
+def mock_memory_manager():
+    return MagicMock()
+
+
+def _real_i18n(lang: str = "en"):
+    from src.config.i18n import I18nManager
+
+    i18n = I18nManager(str(LOCALES_DIR), default_lang="en")
+    i18n.set_language(lang)
+    return i18n
 
 
 def _make_pack(directory, folder, name):
@@ -169,3 +196,138 @@ class TestBackgroundMonitorStartup:
         none_monitor = MagicMock()
         main._start_background_monitors({"event_monitor": None})
         none_monitor.start.assert_not_called()
+
+
+class TestMainWindowPositioning:
+    """La ventana solo se centra en su primera aparicion."""
+
+    def _window(self, config, memory_manager, i18n):
+        from src.gui.windows.main_window import MainWindow
+
+        return MainWindow(
+            config=config, memory_manager=memory_manager, i18n=i18n
+        )
+
+    def test_first_show_centers_within_available_geometry(
+        self, qapp, mock_config, mock_memory_manager, mock_i18n
+    ):
+        from PySide6.QtCore import QPoint
+        from PySide6.QtGui import QGuiApplication
+
+        screen = QGuiApplication.primaryScreen()
+        available = screen.availableGeometry()
+
+        window = self._window(mock_config, mock_memory_manager, mock_i18n)
+        try:
+            window.show()
+            qapp.processEvents()
+            # ``pos`` es la esquina del marco: es la que usa el calculo.
+            expected = QPoint(
+                available.x() + (available.width() - window.width()) // 2,
+                available.y() + (available.height() - window.height()) // 2,
+            )
+            assert window.pos() == expected
+        finally:
+            window.close()
+
+    def test_first_show_uses_available_geometry_not_full_geometry(
+        self, qapp, mock_config, mock_memory_manager, mock_i18n, mocker
+    ):
+        from PySide6.QtCore import QRect
+        from src.gui.windows import main_window as mw
+
+        fake_screen = MagicMock()
+        # ``geometry`` incluye la barra de tareas: centrarse en el area
+        # completa dejaria la ventana fuera de la zona visible.
+        fake_screen.geometry.return_value = QRect(0, 0, 1920, 1080)
+        fake_screen.availableGeometry.return_value = QRect(0, 40, 1920, 1000)
+        fake_app = MagicMock()
+        fake_app.primaryScreen.return_value = fake_screen
+        mocker.patch.object(mw, "QApplication", fake_app)
+
+        window = self._window(mock_config, mock_memory_manager, mock_i18n)
+        try:
+            window.show()
+            qapp.processEvents()
+            expected_x = 0 + (1920 - window.width()) // 2
+            expected_y = 40 + (1000 - window.height()) // 2
+            assert window.pos().x() == expected_x
+            assert window.pos().y() == expected_y
+        finally:
+            window.close()
+
+    def test_second_show_keeps_user_position(
+        self, qapp, mock_config, mock_memory_manager, mock_i18n
+    ):
+        from PySide6.QtCore import QPoint
+
+        window = self._window(mock_config, mock_memory_manager, mock_i18n)
+        try:
+            window.show()
+            qapp.processEvents()
+            # Posicion elegida por el usuario, como tras arrastrar la ventana.
+            window.move(QPoint(137, 211))
+            window.hide()
+            window.show()
+            qapp.processEvents()
+            assert window.pos() == QPoint(137, 211)
+        finally:
+            window.close()
+
+    def test_repeated_show_never_recenters(
+        self, qapp, mock_config, mock_memory_manager, mock_i18n
+    ):
+        window = self._window(mock_config, mock_memory_manager, mock_i18n)
+        try:
+            window.show()
+            qapp.processEvents()
+            first = window.pos()
+            for _ in range(3):
+                window.hide()
+                window.show()
+                qapp.processEvents()
+            assert window.pos() == first
+        finally:
+            window.close()
+
+
+class TestMainWindowChatInput:
+    """Placeholder y tooltip del input salen de los locales."""
+
+    def test_placeholder_has_no_ctrl_enter_and_tooltip_lists_commands(
+        self, qapp, mock_config, mock_memory_manager
+    ):
+        from src.gui.windows.main_window import MainWindow
+
+        window = MainWindow(
+            config=mock_config,
+            memory_manager=mock_memory_manager,
+            i18n=_real_i18n("en"),
+        )
+        try:
+            placeholder = window.input.placeholderText()
+            assert "Ctrl+Enter" not in placeholder
+            assert placeholder == "Type a message..."
+
+            tooltip = window.input.toolTip()
+            assert tooltip
+            for command in ("/help", "/note", "/remind", "/memories", "/exit"):
+                assert command in tooltip
+        finally:
+            window.close()
+
+    def test_input_text_is_translated(
+        self, qapp, mock_config, mock_memory_manager
+    ):
+        from src.gui.windows.main_window import MainWindow
+
+        window = MainWindow(
+            config=mock_config,
+            memory_manager=mock_memory_manager,
+            i18n=_real_i18n("es"),
+        )
+        try:
+            assert window.input.placeholderText() == "Escribe un mensaje..."
+            assert "/help" in window.input.toolTip()
+        finally:
+            window.close()

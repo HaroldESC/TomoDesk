@@ -3,6 +3,7 @@
     "title": "TomoDesk - {name}",
     "about_title": "About TomoDesk",
     "about_text": "TomoDesk v{version}\n\nDesktop Companion & AI Agent\n\nCharacter: {name}\nModel: {model}\n\nA private, local-first desktop companion.",
+    "about_powered_by": "Powered by PySide6 and Ollama",
     "model_license_note": "Chat models may carry their own licenses (e.g. Meta Llama 3.2 uses the Llama Community License, not MIT). See README for details."
   },
   "menu": {
@@ -34,11 +35,12 @@
     }
   },
   "chat": {
-    "input_placeholder": "Type a message... (Ctrl+Enter to send)",
+    "input_placeholder": "Type a message...",
     "send_button": "Send",
-    "thinking": "...",
+    "thinking": "Thinking...",
     "error_prefix": "[Error: {error}]",
-    "clear_system_msg": "Chat cleared. Short-term memory reset."
+    "clear_system_msg": "Chat cleared. Short-term memory reset.",
+    "commands_tooltip": "Commands: /help, /note, /remind, /remember, /memories, /mood, /context, /proactive, /episodic, /model, /debug, /clear, /exit. Type /help for details."
   },
   "commands": {
     "help_text": "Available commands:\n  /note <title> | <content> - Save a note\n  /remind <minutes> <message> - Set a reminder\n  /remember <text> - Save an episodic memory\n  /memories - List recent episodic memories\n  /mood - Show current mood\n  /context - Show current context\n  /proactive [on|off] - Toggle proactive comments\n  /model [status|download] - Manage the local LLM model\n  /debug [on|off] - Log the exact prompt sent to the model\n  /help - Show this help\n  /exit - Quit TomoDesk",
@@ -309,7 +311,11 @@
       "advanced_about": "About",
       "tutorial_play": "Play initial tutorial",
       "save": "Save",
-      "close": "Close"
+      "close": "Close",
+      "discard_title": "Discard changes?",
+      "discard_body": "There are unsaved changes. Close without saving?",
+      "discard_confirm": "Discard",
+      "discard_cancel": "Keep editing"
     }
   },
   "prompts": {
@@ -403,6 +409,7 @@
     "back": "Back",
     "next": "Next",
     "finish": "Finish",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "cancelling": "Cancelling..."
   }
 }

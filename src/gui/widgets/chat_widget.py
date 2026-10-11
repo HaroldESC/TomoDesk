@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import (
     QFrame, QHBoxLayout, QLabel, QScrollArea, QSizePolicy,
     QSpacerItem, QVBoxLayout, QWidget,
@@ -25,6 +25,8 @@ _TEXT_DK     = TEXT_PRIMARY_DK
 
 _FONT                 = "Segoe UI, Inter, Arial"
 _MAX_BUBBLE_WIDTH_RATIO = 0.72
+# Tolerancia (px) para considerar que el usuario sigue "pegado" al fondo.
+_SCROLL_BOTTOM_TOLERANCE = 4
 
 
 class MessageBubble(QFrame):
@@ -49,7 +51,14 @@ class MessageBubble(QFrame):
 
         self.label = QLabel(text)
         self.label.setWordWrap(True)
-        self.label.setTextInteractionFlags(Qt.NoTextInteraction)
+        # Qt habilita el menú contextual nativo (Select All / Copy) y la
+        # navegación por teclado, de modo que el texto ya se puede copiar.
+        self.label.setTextInteractionFlags(
+            Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard
+        )
+        # Accesibilidad: un lector de pantalla anuncia el rol y un extracto.
+        self.label.setAccessibleName(role)
+        self.label.setAccessibleDescription(text[:80])
         # Let the label shrink horizontally (the parent constrains width).
         self.label.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Minimum)
         layout.addWidget(self.label)
@@ -139,6 +148,16 @@ class ChatWidget(QWidget):
         self.scroll_area.setWidget(self.message_container)
         root.addWidget(self.scroll_area)
 
+        # Flag "stick to bottom": el usuario está leyendo el final del
+        # historial, así que cada recálculo del rango debe dejarnos abajo.
+        # insertWidget solo invalida el layout, por lo que el rango de la
+        # scrollbar llega después (LayoutRequest) y el scroll se reintenta
+        # desde _on_range_changed.
+        self._stick_to_bottom = False
+        self.scroll_area.verticalScrollBar().rangeChanged.connect(
+            self._on_range_changed
+        )
+
         self._apply_theme_style(theme)
 
     # ------------------------------------------------------------------
@@ -146,6 +165,11 @@ class ChatWidget(QWidget):
     # ------------------------------------------------------------------
 
     def add_message(self, role: str, content: str):
+        # Se decide ANTES de insertar: insertWidget solo invalida el layout y
+        # encola un QEvent::LayoutRequest, así que el rango de la scrollbar
+        # todavía no refleja el mensaje nuevo.
+        was_at_bottom = self._is_at_bottom()
+
         bubble = MessageBubble(content, role, theme=self.theme)
         bubble.setMaximumWidth(self._bubble_max_width())
 
@@ -172,7 +196,15 @@ class ChatWidget(QWidget):
         # Insert before the trailing stretch item.
         self.message_layout.insertWidget(self.message_layout.count() - 1, row)
 
-        self._scroll_to_bottom()
+        if was_at_bottom:
+            # Se aplaza al bucle de eventos y se mantiene el flag hasta que el
+            # layout recalcule de verdad el rango de la scrollbar.
+            self._stick_to_bottom = True
+            QTimer.singleShot(0, self._scroll_to_bottom)
+        else:
+            # El usuario estaba leyendo más arriba: NO se le arrastra, se
+            # conserva su posición de lectura.
+            self._stick_to_bottom = False
 
     def set_theme(self, theme: str):
         self.theme = theme
@@ -211,6 +243,7 @@ class ChatWidget(QWidget):
         return "\n".join(texts)
 
     def clear(self):
+        self._stick_to_bottom = False
         # Remove every row except the trailing stretch item.
         while self.message_layout.count() > 1:
             item = self.message_layout.takeAt(0)
@@ -244,14 +277,42 @@ class ChatWidget(QWidget):
             }}
         """)
 
+    def _is_at_bottom(self) -> bool:
+        """Indica si la vista está pegada al final del historial."""
+        try:
+            sb = self.scroll_area.verticalScrollBar()
+            return sb.value() >= sb.maximum() - _SCROLL_BOTTOM_TOLERANCE
+        except RuntimeError:
+            return False
+
+    def _on_range_changed(self, _minimum: int, _maximum: int):
+        """
+        El layout acaba de recalcular el rango real de la scrollbar.
+
+        Es el punto fiable para fijar el fondo: cuando insertWidget encola el
+        LayoutRequest, maximum() todavía era el valor obsoleto. El scroll se
+        aplaza un turno más porque dentro de rangeChanged la scrollbar está a
+        medio actualizar.
+        """
+        if self._stick_to_bottom:
+            QTimer.singleShot(0, self._scroll_to_bottom)
+
     def _scroll_to_bottom(self):
         try:
             sb = self.scroll_area.verticalScrollBar()
             sb.setValue(sb.maximum())
+            # Si el contenido cabe entero no hay nada a lo que pegarse: el flag
+            # se conserva por si el rango crece después.
+            if sb.maximum() > 0:
+                self._stick_to_bottom = False
         except RuntimeError:
             pass
 
     def resizeEvent(self, event):
+        # Si el chat estaba pegado al fondo, el nuevo ancho (y por tanto el
+        # nuevo alto del contenido) debe volver a dejarnos al fondo.
+        was_at_bottom = self._is_at_bottom()
+        self._stick_to_bottom = was_at_bottom
         super().resizeEvent(event)
         max_w = self._bubble_max_width()
         # Update every bubble's maximum width so text re-wraps correctly.
@@ -269,3 +330,9 @@ class ChatWidget(QWidget):
                 child = row_layout.itemAt(j)
                 if child and isinstance(child.widget(), MessageBubble):
                     child.widget().setMaximumWidth(max_w)
+
+        if was_at_bottom:
+            # Aplazado: el ancho de las burbujas aún no ha reconfigurado el
+            # layout, así que maximum() está obsoleto en este instante.
+            self._stick_to_bottom = True
+            QTimer.singleShot(0, self._scroll_to_bottom)

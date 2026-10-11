@@ -21,6 +21,31 @@ from src.system.window_manager import WindowManager
 
 logger = logging.getLogger(__name__)
 
+# Opacidad mínima del overlay: con 0 el personaje sería invisible y, al no
+# haber atajo para recuperarlo, la app quedaría inutilizable sin consola.
+_MIN_OVERLAY_OPACITY = 0.2
+
+# Margen (px) usado tanto por _load_position() como por _ensure_visible().
+_POSITION_MARGIN = 50
+
+# Esquinas ofrecidas por el diálogo de Ajustes (settings_dialog.py).
+_OVERLAY_POSITIONS = ("bottom-right", "bottom-left", "top-right", "top-left",
+                      "center")
+
+
+def _coerce_int(value, default: int, minimum: int | None = None,
+                maximum: int | None = None) -> int:
+    """Convierte a int tolerando config corrupta (None, texto, bool...)."""
+    try:
+        result = int(value)
+    except (TypeError, ValueError):
+        return default
+    if minimum is not None:
+        result = max(minimum, result)
+    if maximum is not None:
+        result = min(maximum, result)
+    return result
+
 
 class OverlayWindow(QWidget):
     double_clicked = Signal()
@@ -53,6 +78,11 @@ class OverlayWindow(QWidget):
         self.setAttribute(Qt.WA_NoSystemBackground, True)
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.NoFocus)
+
+        self._window_opacity = 1.0
+        self.apply_overlay_opacity(
+            config.get("ui", {}).get("overlay_opacity", 1.0)
+        )
 
         self.character_size = config.get("ui", {}).get("character_size", 150)
         self.setFixedSize(self.character_size, self.character_size)
@@ -163,11 +193,44 @@ class OverlayWindow(QWidget):
         except Exception as e:
             logger.warning(f"Failed to load overlay position: {e}")
 
-        screen = QApplication.primaryScreen().geometry()
-        default_x = screen.width() - self.width() - 20
-        default_y = screen.height() - self.height() - 60
-        self.move(default_x, default_y)
-        logger.info(f"Using default overlay position: ({default_x}, {default_y})")
+        default_pos = self._default_position()
+        self.move(default_pos)
+        logger.info(f"Using default overlay position: ({default_pos.x()}, "
+                    f"{default_pos.y()})")
+
+    def _default_position(self) -> QPoint:
+        """Esquina inicial según ``ui.overlay_default_position``.
+
+        Sin preferencia guardada el overlay se coloca donde el usuario
+        configuró en Ajustes, en lugar de caer siempre abajo-derecha.
+        """
+        anchor = self.config.get("ui", {}).get(
+            "overlay_default_position", "bottom-right"
+        )
+        if not isinstance(anchor, str):
+            anchor = "bottom-right"
+        anchor = anchor.strip().lower()
+        if anchor not in _OVERLAY_POSITIONS:
+            logger.warning(f"Unknown overlay position: {anchor!r}")
+            anchor = "bottom-right"
+
+        screen = QApplication.primaryScreen()
+        area = (screen.availableGeometry() if screen is not None
+                else QRect(0, 0, 1920, 1080))
+
+        if anchor == "center":
+            return QPoint(
+                area.left() + (area.width() - self.width()) // 2,
+                area.top() + (area.height() - self.height()) // 2,
+            )
+
+        # Mismo margen y mismos bordes inclusivos que usa _ensure_visible(),
+        # así el clamp posterior no mueve lo que acabamos de colocar.
+        x = (area.left() + _POSITION_MARGIN if "left" in anchor
+             else area.right() - self.width() - _POSITION_MARGIN)
+        y = (area.top() + _POSITION_MARGIN if "top" in anchor
+             else area.bottom() - self.height() - _POSITION_MARGIN)
+        return QPoint(x, y)
 
     def _save_position(self):
         pos = self.pos()
@@ -181,7 +244,7 @@ class OverlayWindow(QWidget):
     def _ensure_visible(self):
         screen = QApplication.primaryScreen().geometry()
         pos = self.pos()
-        margin = 50
+        margin = _POSITION_MARGIN
 
         new_x = max(screen.left() + margin, min(pos.x(), screen.right() - self.width() - margin))
         new_y = max(screen.top() + margin, min(pos.y(), screen.bottom() - self.height() - margin))
@@ -272,6 +335,48 @@ class OverlayWindow(QWidget):
         """Adopt window_sitting settings pushed from the Settings dialog."""
         if self.sitting_ctrl is not None:
             self.sitting_ctrl.apply_config(config)
+
+    def apply_bubble_config(self, ui: dict) -> None:
+        """Aplica estilo, recorte y temporizadores de la burbuja sin reiniciar la app.
+
+        Es idempotente y tolera una config corrupta: cualquier clave ausente o
+        de tipo inesperado se interpreta con un valor por defecto sensato en
+        lugar de propagar la excepción al diálogo de Ajustes.
+        """
+        bubble = getattr(self, "bubble", None)
+        if bubble is None:
+            return
+        if not isinstance(ui, dict):
+            return
+
+        style = ui.get("bubble_style")
+        if isinstance(style, str) and style and style != bubble.style.value:
+            bubble.set_style(style)
+
+        max_lines = _coerce_int(
+            ui.get("bubble_max_lines"), bubble.max_lines, minimum=0)
+        if max_lines != bubble.max_lines:
+            bubble.max_lines = max_lines
+
+        fade_delay = _coerce_int(
+            ui.get("bubble_fade_delay_ms"), bubble.fade_delay_ms, minimum=0)
+        if fade_delay != bubble.fade_delay_ms:
+            bubble.fade_delay_ms = fade_delay
+
+        interval = _coerce_int(
+            ui.get("bubble_typewriter_interval_ms"), 0, minimum=0)
+        if interval > 0:
+            bubble.set_typewriter_interval(interval)
+
+    def apply_overlay_opacity(self, value: float) -> None:
+        """Fija la opacidad de la ventana clampeada a un rango siempre visible."""
+        try:
+            opacity = float(value)
+        except (TypeError, ValueError):
+            logger.warning(f"Invalid overlay opacity {value!r}; using 1.0")
+            opacity = 1.0
+        self._window_opacity = min(1.0, max(_MIN_OVERLAY_OPACITY, opacity))
+        self.setWindowOpacity(self._window_opacity)
 
     def set_animation_state(self, state: str):
         emotion = self.state_manager.get_state() if self.state_manager else None
@@ -562,6 +667,8 @@ class OverlayWindow(QWidget):
     def apply_theme(self, theme_name: str):
         styles = get_style_set(theme_name)
         self._styles = styles
+        # Un cambio de tema no debe alterar la opacidad elegida en Ajustes.
+        self.setWindowOpacity(self._window_opacity)
 
     def reload_sprite(self, sprite_name: str = None):
         self.sprite_manager._load_sprite()

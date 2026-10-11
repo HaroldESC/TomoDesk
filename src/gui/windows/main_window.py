@@ -56,6 +56,10 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(900, 550)
         self.resize(1000, 700)
 
+        # Centrado solo en la primera aparicion: despues manda la posicion
+        # que el usuario haya dejado (p.ej. al restaurar desde la bandeja).
+        self._positioned = False
+
         theme = config.get("ui", {}).get("theme", "light")
         self._styles = get_style_set(theme)
         self.setStyleSheet(self._styles["main"])
@@ -147,6 +151,7 @@ class MainWindow(QMainWindow):
         input_layout = QHBoxLayout()
         self.input = QLineEdit()
         self.input.setPlaceholderText(self.i18n.t("chat.input_placeholder"))
+        self.input.setToolTip(self.i18n.t("chat.commands_tooltip"))
         self.input.returnPressed.connect(self._send_message)
         input_layout.addWidget(self.input, stretch=1)
 
@@ -184,7 +189,8 @@ class MainWindow(QMainWindow):
             except Exception:
                 pass
 
-        if idle_sec > 600:
+        sleep_timeout = self.config.get("ui", {}).get("sleep_timeout_seconds", 300)
+        if idle_sec > sleep_timeout:
             msg = self.i18n.t("status.sleeping", name=name)
         elif state["connection"] < 0.2:
             msg = self.i18n.t("status.distant", name=name)
@@ -298,7 +304,9 @@ class MainWindow(QMainWindow):
                 logger.error(f"Chat error: {e}", exc_info=True)
                 self._system_message_signal.emit(self.i18n.t("chat.error_prefix", error=str(e)))
                 if self.overlay:
-                    self.overlay._bubble_text_signal.emit(f"Error: {e}", False)
+                    self.overlay._bubble_text_signal.emit(
+                        self.i18n.t("chat.error_prefix", error=str(e)), False
+                    )
 
         self.send_btn.setEnabled(False)
         self.send_btn.setText(self.i18n.t("chat.thinking"))
@@ -370,7 +378,7 @@ class MainWindow(QMainWindow):
             self.i18n.t("app.about_title"),
             f"<h3>TomoDesk v{__version__}</h3>"
             f"<p>{self.i18n.t('app.about_text', name=self.config['personality']['name'], model=self.config['llm']['model'], version=__version__)}</p>"
-            f"<hr><p><small>Powered by PySide6 and Ollama</small></p>"
+            f"<hr><p><small>{self.i18n.t('app.about_powered_by')}</small></p>"
             f"<p><small>{self.i18n.t('app.model_license_note')}</small></p>",
         )
 
@@ -456,6 +464,7 @@ class MainWindow(QMainWindow):
         name = self.config["personality"]["name"]
         self.setWindowTitle(self.i18n.t("app.title", name=name))
         self.input.setPlaceholderText(self.i18n.t("chat.input_placeholder"))
+        self.input.setToolTip(self.i18n.t("chat.commands_tooltip"))
         self.send_btn.setText(self.i18n.t("chat.send_button"))
         self.toggle_overlay_action.setText(self.i18n.t("menu.char.show_overlay"))
         self.focus_mode_action.setText(self.i18n.t("menu.char.focus_mode"))
@@ -473,11 +482,24 @@ class MainWindow(QMainWindow):
         self._update_status_message()
 
     def showEvent(self, event):
+        """Centra la ventana solo en su primera aparicion (``Design.md`` §5.3).
+
+        En reaperturas posteriores (restaurar desde la bandeja, volver a
+        mostrar tras cerrar) se respeta la posicion que haya dejado el
+        usuario. ``availableGeometry`` evita solapar la barra de tareas.
+        """
         super().showEvent(event)
-        screen = QApplication.primaryScreen().geometry()
+        if self._positioned:
+            return
+        self._positioned = True
+
+        screen = QApplication.primaryScreen()
+        if screen is None:
+            return
+        area = screen.availableGeometry()
         self.move(
-            screen.x() + (screen.width() - self.width()) // 2,
-            screen.y() + (screen.height() - self.height()) // 2,
+            area.x() + (area.width() - self.width()) // 2,
+            area.y() + (area.height() - self.height()) // 2,
         )
 
     def closeEvent(self, event):

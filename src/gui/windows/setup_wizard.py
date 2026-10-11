@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 from src.config.config import get_config_path, save_config, validate_llm_endpoint
 from src.config.credentials import CredentialManager
 from src.gui.styles.styles import get_style_set
+from src.gui.utils import force_taskbar_entry
 from src.llm.llama_cpp import is_llama_cpp_available
 
 logger = logging.getLogger(__name__)
@@ -115,7 +116,7 @@ class SetupWizard(QDialog):
         self._applied_mode = MODE_LATER
         self._alive = True
 
-        theme = config.get("ui", {}).get("theme", "dark")
+        theme = config.get("ui", {}).get("theme", "light")
         self.setStyleSheet(get_style_set(theme)["dialog"])
         self.setWindowTitle(self._t("setup.title", "TomoDesk Setup"))
         self.setMinimumSize(580, 460)
@@ -133,6 +134,7 @@ class SetupWizard(QDialog):
 
         self._stack.setCurrentIndex(_PAGE_WELCOME)
         self._sync_nav()
+        force_taskbar_entry(self)
 
     # ── i18n ─────────────────────────────────────────────────────────────────
 
@@ -142,6 +144,20 @@ class SetupWizard(QDialog):
             if text != key:
                 return text
         return fallback.format(**kwargs) if kwargs else fallback
+
+    # ── posicion ─────────────────────────────────────────────────────────────
+
+    def showEvent(self, event) -> None:
+        """Centra el asistente sobre su ventana padre (``Design.md`` §5.3)."""
+        super().showEvent(event)
+        parent = self.parentWidget()
+        if parent is None:
+            return
+        p = parent.geometry()
+        self.move(
+            p.x() + (p.width() - self.width()) // 2,
+            p.y() + (p.height() - self.height()) // 2,
+        )
 
     # ── pages ────────────────────────────────────────────────────────────────
 
@@ -272,7 +288,6 @@ class SetupWizard(QDialog):
         layout.addWidget(self._status_label)
 
         self._download_btn = QPushButton(self._t("setup.download", "Download"))
-        self._download_btn.setObjectName("primary")
         self._download_btn.clicked.connect(self._start_download)
         layout.addWidget(self._download_btn)
 
@@ -354,7 +369,6 @@ class SetupWizard(QDialog):
         nav.addWidget(self._back_btn)
 
         self._next_btn = QPushButton(self._t("setup.next", "Next"))
-        self._next_btn.setObjectName("primary")
         self._next_btn.clicked.connect(self._on_next)
         nav.addWidget(self._next_btn)
         return nav
@@ -543,10 +557,19 @@ class SetupWizard(QDialog):
         ))
 
     def _on_cancel(self) -> None:
-        if self._download_worker is not None and self._download_worker.isRunning():
-            self._download_worker.request_cancel()
-            self._download_worker.wait(2000)
-            return
+        """Cancela lo que este en marcha y cierra siempre.
+
+        Si hay una descarga en curso se pide su cancelacion, se bloquea la
+        interaccion con un estado visible y se cierra. ``_detach_workers()``
+        deja el ``QThread`` desparentado y vivo, asi que la descarga termina
+        sola sin que el cierre la destruya a mitad de trabajo.
+        """
+        worker = self._download_worker
+        if worker is not None and worker.isRunning():
+            worker.request_cancel()
+            self._cancel_btn.setEnabled(False)
+            self._download_btn.setEnabled(False)
+            self._status_label.setText(self._t("setup.cancelling", "Cancelling..."))
         self.reject()
 
     def closeEvent(self, event) -> None:

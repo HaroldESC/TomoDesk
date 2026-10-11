@@ -26,6 +26,22 @@ def ensure_qapp(qapp):
 
 
 @pytest.fixture(autouse=True)
+def no_blocking_message_box(monkeypatch):
+    """Evita que un QMessageBox modal real deje la suite colgada.
+
+    El diálogo de Ajustes pregunta al cerrar si hay cambios sin guardar; un
+    test que termine con ``_dirty`` a True abriría un ``exec()`` de verdad que
+    nadie responde. Por defecto la respuesta simulada es "seguir editando".
+    """
+    monkeypatch.setattr(QMessageBox, "exec", lambda self: 0)
+    monkeypatch.setattr(
+        QMessageBox,
+        "clickedButton",
+        lambda self: _discard_button(self, "dialogs.settings.discard_cancel"),
+    )
+
+
+@pytest.fixture(autouse=True)
 def local_engine(mocker):
     """Mantiene el motor local disponible por defecto.
 
@@ -82,6 +98,36 @@ def _group_texts(page):
         for g in page.findChildren(QGroupBox)
         if g.property("_search_text")
     ]
+
+
+def _discard_button(box, key: str):
+    """Botón del diálogo de descarte cuya etiqueta es la clave ``key``.
+
+    Los botones se añaden con ``addButton`` (texto propio), así que no se
+    pueden recuperar por ``StandardButton``.
+    """
+    return next(b for b in box.buttons() if b.text() == key)
+
+
+def _answer_discard(monkeypatch, confirm: bool) -> list:
+    """Fuerza la respuesta del diálogo de descarte y captura los QMessageBox.
+
+    Devuelve la lista donde se acumulan los boxes construidos, para poder
+    comprobar sus textos traducidos.
+    """
+    key = ("dialogs.settings.discard_confirm" if confirm
+           else "dialogs.settings.discard_cancel")
+    boxes = []
+
+    def fake_exec(self):
+        boxes.append(self)
+        return 0
+
+    monkeypatch.setattr(QMessageBox, "exec", fake_exec)
+    monkeypatch.setattr(
+        QMessageBox, "clickedButton", lambda self: _discard_button(self, key)
+    )
+    return boxes
 
 
 class TestSettingsNavigation:
@@ -748,3 +794,210 @@ class TestBubbleStyleOptions:
         mock_config.setdefault("ui", {})["bubble_style"] = "round"
         dialog = _make_dialog(qtbot, mock_config, mock_i18n)
         assert dialog.ui_bubble_style.currentText() == "round"
+
+
+class TestDirtyTracking:
+    """El buscador filtra la vista: no es un ajuste y no debe ensuciar nada."""
+
+    def test_typing_in_the_search_does_not_mark_dirty(self, qtbot, mock_config, mock_i18n):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        assert dialog._dirty is False
+
+        dialog._search_field.setText("bubble")
+        dialog._search_field.setText("")
+
+        assert dialog._dirty is False
+        assert dialog._close_btn.text() == "dialogs.settings.close"
+
+    def test_editing_a_real_setting_marks_dirty(self, qtbot, mock_config, mock_i18n):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+
+        dialog.pers_traits.setText("curious, calm")
+
+        assert dialog._dirty is True
+        # El botón nunca cambia de identidad: no descarta nada.
+        assert dialog._close_btn.text() == "dialogs.settings.close"
+
+
+class TestDiscardConfirmation:
+    """Nada se pierde en silencio: cerrar con cambios pide confirmación."""
+
+    def test_declining_keeps_the_dialog_open(self, qtbot, mock_config, mock_i18n,
+                                              monkeypatch):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        dialog.pers_traits.setText("curious")
+        _answer_discard(monkeypatch, confirm=False)
+        dialog.show()
+
+        dialog.close()
+
+        assert dialog.isVisible()
+        dialog._dirty = False  # no dejar el box abierto en el teardown
+
+    def test_confirming_closes_the_dialog(self, qtbot, mock_config, mock_i18n,
+                                          monkeypatch):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        dialog.pers_traits.setText("curious")
+        _answer_discard(monkeypatch, confirm=True)
+        dialog.show()
+
+        dialog.close()
+
+        assert not dialog.isVisible()
+
+    def test_escape_asks_too(self, qtbot, mock_config, mock_i18n, monkeypatch):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        dialog.pers_traits.setText("curious")
+        _answer_discard(monkeypatch, confirm=False)
+        dialog.show()
+
+        dialog.reject()  # Esc va por reject(), no por closeEvent()
+
+        assert dialog.isVisible()
+        dialog._dirty = False
+
+    def test_escape_closes_when_confirmed(self, qtbot, mock_config, mock_i18n,
+                                          monkeypatch):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        dialog.pers_traits.setText("curious")
+        _answer_discard(monkeypatch, confirm=True)
+        dialog.show()
+
+        dialog.reject()
+
+        assert not dialog.isVisible()
+
+    def test_prompt_uses_translated_labels(self, qtbot, mock_config, mock_i18n,
+                                           monkeypatch):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        dialog.pers_traits.setText("curious")
+        boxes = _answer_discard(monkeypatch, confirm=False)
+        dialog.show()
+
+        dialog.close()
+
+        assert len(boxes) == 1
+        box = boxes[0]
+        assert box.windowTitle() == "dialogs.settings.discard_title"
+        assert box.text() == "dialogs.settings.discard_body"
+        assert (_discard_button(box, "dialogs.settings.discard_cancel")
+                is not None)
+        assert (_discard_button(box, "dialogs.settings.discard_confirm")
+                is not None)
+        dialog._dirty = False
+
+    def test_clean_dialog_closes_without_asking(self, qtbot, mock_config, mock_i18n,
+                                                monkeypatch):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        boxes = _answer_discard(monkeypatch, confirm=False)
+        dialog.show()
+
+        dialog.close()
+
+        assert boxes == []
+        assert not dialog.isVisible()
+
+
+class TestSaveOrdering:
+    """Se valida antes de mutar: un fallo no debe dejar la app a medias."""
+
+    def test_invalid_endpoint_leaves_everything_untouched(
+        self, qtbot, mock_config, mock_i18n, monkeypatch
+    ):
+        import copy
+
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        dialog.llm_provider.setCurrentText("openai_compatible")
+        dialog.llm_endpoint.setText("esto-no-es-un-endpoint")
+        dialog.ui_lang.setCurrentText("es")
+        dialog.ui_theme.setCurrentText("dark")
+        snapshot = copy.deepcopy(mock_config)
+        emitted = []
+        dialog.language_changed.connect(lambda: emitted.append(True))
+        saved = []
+        monkeypatch.setattr(
+            "src.gui.windows.settings_dialog.save_config",
+            lambda cfg, path: saved.append(cfg),
+        )
+        monkeypatch.setattr("src.gui.windows.settings_dialog._creds", MagicMock())
+
+        with patch("src.gui.windows.settings_dialog.QMessageBox") as mb:
+            dialog._save_settings()
+
+        assert mock_config == snapshot
+        assert saved == []
+        assert emitted == []
+        mock_i18n.set_language.assert_not_called()
+        mb.warning.assert_called_once()
+        assert dialog._dirty is True  # sigue pendiente: el usuario debe corregir
+        dialog._dirty = False
+
+    def test_successful_save_clears_dirty_and_asks_nothing(
+        self, qtbot, mock_config, mock_i18n, monkeypatch
+    ):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        dialog.pers_traits.setText("curious")
+        assert dialog._dirty is True
+        saved = []
+        monkeypatch.setattr(
+            "src.gui.windows.settings_dialog.save_config",
+            lambda cfg, path: saved.append(cfg),
+        )
+        monkeypatch.setattr("src.gui.windows.settings_dialog._creds", MagicMock())
+        boxes = _answer_discard(monkeypatch, confirm=False)
+        dialog.show()
+
+        dialog._save_settings()
+
+        assert boxes == []
+        assert dialog._dirty is False
+        assert saved and saved[0] is mock_config
+        assert mock_config["personality"]["traits"] == "curious"
+        assert not dialog.isVisible()
+
+    def test_language_is_applied_only_after_a_successful_save(
+        self, qtbot, mock_config, mock_i18n, monkeypatch
+    ):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        mock_i18n.detect_language.return_value = "es"
+        monkeypatch.setattr(
+            "src.gui.windows.settings_dialog.save_config", lambda cfg, path: None
+        )
+        monkeypatch.setattr("src.gui.windows.settings_dialog._creds", MagicMock())
+        dialog.show()
+
+        dialog.ui_lang.setCurrentText("es")
+        dialog._save_settings()
+
+        mock_i18n.set_language.assert_called_once_with("es")
+
+    def test_validate_mind_reports_invalid_endpoint(
+        self, qtbot, mock_config, mock_i18n
+    ):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        dialog.llm_provider.setCurrentText("openai_compatible")
+        dialog.llm_endpoint.setText("no-es-una-url")
+
+        with patch("src.gui.windows.settings_dialog.QMessageBox") as mb:
+            assert dialog._validate_mind() is False
+        mb.warning.assert_called_once()
+
+        dialog.llm_endpoint.setText("http://localhost:1234/v1")
+        assert dialog._validate_mind() is True
+
+    def test_appearance_is_pushed_to_the_live_overlay(self, qtbot, mock_config,
+                                                      mock_i18n):
+        from types import SimpleNamespace
+
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        overlay = MagicMock()
+        dialog.parent = lambda: SimpleNamespace(overlay=overlay)
+        dialog.ui_bubble_style.setCurrentText("round")
+        dialog.ui_overlay_opacity.setValue(40)
+
+        dialog._save_appearance()
+
+        overlay.apply_bubble_config.assert_called_once()
+        pushed = overlay.apply_bubble_config.call_args[0][0]
+        assert pushed["bubble_style"] == "round"
+        overlay.apply_overlay_opacity.assert_called_once_with(0.4)

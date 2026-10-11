@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import pytest
-from PySide6.QtWidgets import QDialog
+from PySide6.QtWidgets import QDialog, QWidget
 
 from src.gui.windows import setup_wizard as sw
 from src.gui.windows.setup_wizard import (
@@ -151,6 +151,145 @@ class TestNavigation:
             wizard._on_back()
             assert wizard._stack.currentIndex() == 0
         finally:
+            wizard.close()
+
+
+class TestDialogStyle:
+    """El asistente usa los mismos estilos que el resto de dialogos."""
+
+    def test_missing_ui_config_uses_light_theme(self, qapp, mock_i18n, mocker):
+        config = _config()
+        config.pop("ui")
+        spy = mocker.patch.object(sw, "get_style_set", wraps=sw.get_style_set)
+
+        wizard = SetupWizard(config, i18n=mock_i18n)
+        try:
+            assert spy.call_args[0][0] == "light"
+            assert wizard.styleSheet() == sw.get_style_set("light")["dialog"]
+        finally:
+            wizard.close()
+
+    def test_configured_theme_is_respected(self, qapp, mock_i18n, mocker):
+        config = _config()
+        config["ui"]["theme"] = "dark"
+        spy = mocker.patch.object(sw, "get_style_set", wraps=sw.get_style_set)
+
+        wizard = SetupWizard(config, i18n=mock_i18n)
+        try:
+            assert spy.call_args[0][0] == "dark"
+        finally:
+            wizard.close()
+
+
+class TestButtonStyles:
+    """``Design.md`` §2.1: el boton primario no lleva objectName."""
+
+    def test_primary_actions_have_no_object_name(self, qapp, mock_i18n):
+        wizard = SetupWizard(_config(), i18n=mock_i18n)
+        try:
+            assert wizard._next_btn.objectName() == ""
+            assert wizard._download_btn.objectName() == ""
+        finally:
+            wizard.close()
+
+    def test_secondary_actions_keep_object_name(self, qapp, mock_i18n):
+        wizard = SetupWizard(_config(), i18n=mock_i18n)
+        try:
+            assert wizard._cancel_btn.objectName() == "secondary"
+            assert wizard._back_btn.objectName() == "secondary"
+        finally:
+            wizard.close()
+
+
+class TestCentering:
+    """``Design.md`` §5.3: el asistente se centra sobre su padre."""
+
+    def test_centers_over_parent(self, qapp, mock_i18n):
+        parent = QWidget()
+        parent.setGeometry(240, 180, 900, 700)
+        wizard = SetupWizard(_config(), i18n=mock_i18n, parent=parent)
+        parent.show()
+        try:
+            wizard.show()
+            qapp.processEvents()
+            p = parent.geometry()
+            assert wizard.pos().x() == p.x() + (p.width() - wizard.width()) // 2
+            assert wizard.pos().y() == p.y() + (p.height() - wizard.height()) // 2
+        finally:
+            wizard.close()
+            parent.close()
+
+
+class TestCancel:
+    """Cancelar siempre cierra, tambien con una descarga en curso."""
+
+    def test_cancel_without_download_closes(self, qapp, mock_i18n):
+        wizard = SetupWizard(_config(), i18n=mock_i18n)
+        try:
+            wizard.show()
+            wizard._cancel_btn.click()
+            qapp.processEvents()
+            assert wizard.result() == QDialog.Rejected
+            assert wizard.isVisible() is False
+        finally:
+            wizard.close()
+
+    def test_cancel_during_download_closes_and_cancels(
+        self, qapp, mock_i18n, mocker
+    ):
+        wizard = SetupWizard(_config(), i18n=mock_i18n)
+        worker = mocker.MagicMock()
+        worker.isRunning.return_value = True
+        wizard._download_worker = worker
+        try:
+            wizard.show()
+            wizard._on_cancel()
+            qapp.processEvents()
+
+            worker.request_cancel.assert_called()
+            # Botones bloqueados y feedback visible mientras se cancela.
+            assert wizard._cancel_btn.isEnabled() is False
+            assert wizard._download_btn.isEnabled() is False
+            assert wizard._status_label.text() == "Cancelling..."
+            # El dialogo se cierra: el worker queda desparentado y vivo.
+            assert wizard.result() == QDialog.Rejected
+            assert wizard.isVisible() is False
+            assert wizard._alive is False
+            assert worker in sw._ORPHAN_WORKERS
+        finally:
+            sw._ORPHAN_WORKERS.discard(worker)
+            wizard.close()
+
+    def test_cancel_during_download_calls_reject_once(
+        self, qapp, mock_i18n, mocker
+    ):
+        wizard = SetupWizard(_config(), i18n=mock_i18n)
+        worker = mocker.MagicMock()
+        worker.isRunning.return_value = True
+        wizard._download_worker = worker
+        reject = mocker.patch.object(wizard, "reject")
+        try:
+            wizard._on_cancel()
+            reject.assert_called_once()
+        finally:
+            sw._ORPHAN_WORKERS.discard(worker)
+            wizard.close()
+
+    def test_cancelling_text_comes_from_i18n(self, qapp, mocker):
+        i18n = mocker.MagicMock()
+        i18n.t.side_effect = lambda key, **kw: (
+            "Cancelando..." if key == "setup.cancelling" else key
+        )
+        wizard = SetupWizard(_config(), i18n=i18n)
+        worker = mocker.MagicMock()
+        worker.isRunning.return_value = True
+        wizard._download_worker = worker
+        try:
+            wizard._on_cancel()
+            assert wizard._status_label.text() == "Cancelando..."
+            i18n.t.assert_any_call("setup.cancelling")
+        finally:
+            sw._ORPHAN_WORKERS.discard(worker)
             wizard.close()
 
 
