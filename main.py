@@ -362,8 +362,10 @@ def run_gui(config):
 
     splash = _show_splash()
 
-    from src.gui.styles.styles import MAIN_STYLE
-    app.setStyleSheet(MAIN_STYLE)
+    from src.gui.styles.styles import get_style_set
+
+    theme = config.get("ui", {}).get("theme", "light")
+    app.setStyleSheet(get_style_set(theme)["main"])
 
     _restart_pending = False
     deps_ref = {"deps": None}
