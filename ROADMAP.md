@@ -17,6 +17,32 @@ target tier, not a hard commitment:
 
 ## Released
 
+### v1.7.0
+
+- CLI mode without a GUI stack: `src/__init__.py` exports only `__version__`,
+  `main.py` builds its init worker through a factory, and heavy dependencies
+  (`ollama`, `chromadb`, `psutil`, `yaml`) are imported lazily, so
+  `python main.py` runs on a machine without PySide6.
+- Screen geometry moved into the `PlatformAdapter` contract
+  (`primary_screen_geometry`, `screen_geometry_for_point`), removing the last
+  `QGuiApplication` from `WindowManager`.
+- Fixed secret redaction: `SensitiveDataFilter` attaches to the file and
+  console handlers instead of the root logger, so API keys and tokens emitted
+  by child loggers are redacted again.
+- Startup path fixed: the proactive monitors start after their callbacks are
+  wired (triggers were dropped and due reminders were deactivated unseen),
+  initialization errors surface instead of hanging the splash, the configured
+  theme applies immediately, and the flat/round bubble styles no longer raise
+  at startup.
+- Five Settings actions that called missing methods now work (clear all
+  memories, vacuum database, reindex notes, play tutorial, reset hints) and
+  report their failures.
+- Short-term memory is lock-guarded, and `music_detected`, `coding_detected`,
+  `late_night` and `system_resources` fire on state transitions with a
+  cooldown instead of on every 2 s poll.
+- i18n: `t()` honors `default=`, two missing keys were added, the mood tooltip
+  and `/mood` are translated, and 42 unused keys were dropped.
+
 ### v1.6.0
 
 - Platform abstraction layer `src/platform/`: a `PlatformAdapter` contract with

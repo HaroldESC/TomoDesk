@@ -5,6 +5,86 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-10-11
+
+### Added
+
+- Flat and round speech-bubble styles, implemented as visual recipes and
+  selectable in Settings; unknown or stale values fall back to the dark style.
+- Settings failures are surfaced with a message box instead of failing
+  silently.
+- `DatabaseManager.vacuum()` and `ChromaManager.clear_collection()` /
+  `clear_all_collections()` to back the memory maintenance actions.
+- Mood names are translated in the status-bar tooltip and in `/mood`.
+
+### Fixed
+
+- Secrets are redacted everywhere again: `SensitiveDataFilter` moved from the
+  root logger to the file and console handlers, because records propagated
+  from child loggers were bypassing it and writing API keys and tokens
+  unredacted to `data/logs/tomodesk.log` and to the console.
+- Short-term memory is guarded by a lock; appends from the GUI thread and the
+  overlay chat workers could drop messages or hand out a torn snapshot.
+- Five Settings actions that called missing methods now work: clear all
+  memories, vacuum database, reindex notes, play tutorial and reset hints.
+- The proactive monitors start after their callbacks are wired. They used to
+  start before, so triggers were dropped silently and due reminders were
+  deactivated without ever being shown.
+- An error during initialization now shows a fatal dialog instead of leaving
+  the splash on screen forever.
+- The configured theme is applied at startup, so a dark-theme user no longer
+  saw a light window until Settings re-applied it.
+- Choosing the flat or round bubble style no longer raises `ValueError` at
+  startup and leaves the splash hanging.
+- `i18n.t()` honors its `default=` fallback again (ten call sites passed it),
+  and the two keys the UI referenced but that were missing were added, so a
+  raw key name is no longer shown in the bubble.
+- Aborting a model download cancels it even when the worker was already
+  deleted (`RuntimeError`).
+
+### Changed
+
+- Screen geometry moved into the `PlatformAdapter` contract
+  (`primary_screen_geometry`, `screen_geometry_for_point`, reported by the new
+  `screen_geometry` capability) and is implemented with the Win32 monitor
+  APIs, so `WindowManager` no longer needs Qt.
+- `src/__init__.py` exports only `__version__` and `main.py` builds its init
+  worker through a factory, so CLI mode (`python main.py`) now runs on a
+  machine without a GUI stack.
+- Heavy dependencies (`ollama`, `chromadb`, `psutil`, `yaml`) are imported
+  lazily inside the functions that use them.
+- Shutdown flags moved out of the deps dict into a dedicated `_ShutdownState`,
+  so they are no longer splatted into `MainWindow`.
+- 42 unused translation keys removed from the locale files after verifying
+  zero references.
+
+### Performance
+
+- `music_detected`, `coding_detected`, `late_night` and `system_resources`
+  fire on state transitions instead of on every 2 s poll, with a cooldown for
+  resources and word-boundary keyword matching, so "Unicode" or "cmdline" no
+  longer count as coding.
+
+### Tests
+
+- The design system gained coverage (`tests/test_styles.py`): token parity
+  between themes, the dark sheet really using the dark palette, and every
+  generated sheet accepted by Qt.
+- 24 tests that ran real work but asserted nothing now check deterministic
+  invariants; `test_i18n.py` derives the version and the locale path from the
+  project instead of pinning them.
+- New concurrency tests for short-term memory, plus coverage for the platform
+  geometry, the reminder checker, shutdown state, event throttling and the
+  repaired settings actions.
+
+### Documentation
+
+- `AGENTS.md`, `docs/TECHNICAL_SPEC.md`, `README.md`, `docs/VISION.md` and
+  `ROADMAP.md` aligned with the code (version, test count, package trees,
+  removal of audio reactivity).
+- The roadmap gained a v1.6.0 entry, themed `Planned` sections with target
+  tiers, and an audit of every planned item against the code.
+
 ## [1.6.0] - 2026-09-22
 
 ### Added
@@ -130,7 +210,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   helper.
 - `main.py` shows the setup wizard before creating the windows.
 
-[1.4.0]: https://github.com/HaroldESC/TomoDesk/releases/tag/v1.4.0
-[1.4.1]: https://github.com/HaroldESC/TomoDesk/releases/tag/v1.4.1
-[1.5.0]: https://github.com/HaroldESC/TomoDesk/releases/tag/v1.5.0
 [1.6.0]: https://github.com/HaroldESC/TomoDesk/releases/tag/v1.6.0
+[1.7.0]: https://github.com/HaroldESC/TomoDesk/releases/tag/v1.7.0
