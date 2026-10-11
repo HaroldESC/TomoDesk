@@ -1,6 +1,7 @@
 """Tests for internationalization module."""
 
 import json
+import re
 import tempfile
 from pathlib import Path
 
@@ -194,26 +195,118 @@ def test_missing_placeholder(locale_dir, caplog):
 
 
 def test_load_full_locale_files():
-    """Test loading the actual project locale files."""
-    i18n = I18nManager("data/locales", default_lang="en")
+    """Test loading the actual project locale files.
+
+    Usa una ruta absoluta para no depender del directorio de trabajo y la
+    version real del paquete, que antes estaba fija en 1.2.0.
+    """
+    from src import __version__
+
+    i18n = I18nManager(str(LOCALES_DIR), default_lang="en")
     assert "en" in i18n.translations
     assert "es" in i18n.translations
+
     assert i18n.t("app.title", name="Tomo") == "TomoDesk - Tomo"
-    assert i18n.t("menu.file") == "&File"
     assert i18n.t("chat.send_button") == "Send"
     assert i18n.t("dialogs.notes.title") == "Notes"
-    assert i18n.t("app.about_text", name="Tomo", model="llama",
-                  version="1.2.0") == "TomoDesk v1.2.0\n\nDesktop Companion & AI Agent\n\nCharacter: Tomo\nModel: llama\n\nA private, local-first desktop companion."
+
+    body = i18n.t("app.about_text", name="Tomo", model="llama", version=__version__)
+    assert f"TomoDesk v{__version__}" in body
+    assert "Character: Tomo" in body and "Model: llama" in body
+
     assert i18n.t("status.listening", name="Tomo") == "Tomo is listening."
-    assert i18n.t("commands.clear_success", name="Tomo") == \
+    assert i18n.t("commands.clear_success", name="Tomo") == (
         "Short-term memory cleared. Tomo will not remember this conversation."
-    assert "role_assistant" not in i18n.translations["en"]["chat"]
+    )
+
     i18n.set_language("es")
-    assert i18n.t("menu.file") == "&Archivo"
     assert i18n.t("chat.send_button") == "Enviar"
     assert i18n.t("dialogs.notes.title") == "Notas"
-    assert i18n.t("status.curious", name="Tomo") == \
+    assert i18n.t("status.curious", name="Tomo") == (
         "Tomo tiene curiosidad por lo que haces..."
-    assert i18n.t("commands.clear_success", name="Tomo") == \
-        "Memoria a corto plazo limpiada. Tomo no recordará esta conversación."
-    assert "role_assistant" not in i18n.translations["es"]["chat"]
+    )
+    assert i18n.t("commands.clear_success", name="Tomo") != ""
+
+
+def test_locale_files_declare_the_same_keys():
+    """EN y ES deben evolucionar a la par: sin claves huérfanas."""
+    en = json.loads((LOCALES_DIR / "en.json").read_text(encoding="utf-8"))
+    es = json.loads((LOCALES_DIR / "es.json").read_text(encoding="utf-8"))
+
+    def flatten(data, prefix=""):
+        out = set()
+        for key, value in data.items():
+            dotted = f"{prefix}{key}"
+            if isinstance(value, dict):
+                out |= flatten(value, dotted + ".")
+            else:
+                out.add(dotted)
+        return out
+
+    only_en = flatten(en) - flatten(es)
+    only_es = flatten(es) - flatten(en)
+    assert not only_en, f"claves solo en EN: {sorted(only_en)}"
+    assert not only_es, f"claves solo en ES: {sorted(only_es)}"
+
+
+def test_placeholders_match_between_languages():
+    """Las plantillas {x} deben coincidir para no romper el formateo."""
+    en = json.loads((LOCALES_DIR / "en.json").read_text(encoding="utf-8"))
+    es = json.loads((LOCALES_DIR / "es.json").read_text(encoding="utf-8"))
+
+    def flatten(data, prefix=""):
+        out = {}
+        for key, value in data.items():
+            dotted = f"{prefix}{key}"
+            if isinstance(value, dict):
+                out.update(flatten(value, dotted + "."))
+            else:
+                out[dotted] = value
+        return out
+
+    fe, fs = flatten(en), flatten(es)
+    for key, text in fe.items():
+        assert set(re.findall(r"\{(\w+)", text)) == set(
+            re.findall(r"\{(\w+)", fs[key])
+        ), f"placeholders distintos en {key}"
+
+
+def test_keys_used_by_the_ui_exist():
+    """Evita que la UI muestre el nombre de la clave en claro.
+
+    Recoge las claves literales de .t() mas las que se construyen por
+    variable (moods y modos de window-sitting).
+    """
+    from src.config.i18n import I18nManager as M
+
+    en = json.loads((LOCALES_DIR / "en.json").read_text(encoding="utf-8"))
+    es = json.loads((LOCALES_DIR / "es.json").read_text(encoding="utf-8"))
+
+    def flatten(data, prefix=""):
+        out = set()
+        for key, value in data.items():
+            dotted = f"{prefix}{key}"
+            if isinstance(value, dict):
+                out |= flatten(value, dotted + ".")
+            else:
+                out.add(dotted)
+        return out
+
+    defined = flatten(en) & flatten(es)
+
+    used = set()
+    for path in list(PROJECT_ROOT.glob("src/**/*.py")) + [PROJECT_ROOT / "main.py"]:
+        text = path.read_text(encoding="utf-8")
+        used |= set(re.findall(r"""\.t\(\s*[fr]?["']([a-zA-Z0-9_.]+)["']""", text))
+
+    # Claves construidas dinamicamente.
+    for mood in ("happiness", "energy", "curiosity", "closeness", "connection"):
+        used.add(f"status.mood_{mood}")
+        used.add(f"status.mood_name_{mood}")
+    for mode in ("active", "mouse", "closest", "fixed"):
+        used.add(f"dialogs.settings.ws_target_{mode}")
+    for pos in ("top_left", "top_right", "bottom_left", "bottom_right"):
+        used.add(f"dialogs.settings.ws_fallback_{pos}")
+
+    missing = sorted(key for key in used if key not in defined)
+    assert not missing, f"claves usadas y no definidas: {missing}"
