@@ -1,8 +1,21 @@
+import datetime
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QMessageBox
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _real_i18n(lang: str = "es"):
+    """I18nManager con los locales reales del proyecto."""
+    from src.config.i18n import I18nManager
+
+    i18n = I18nManager(str(PROJECT_ROOT / "data" / "locales"), default_lang="en")
+    i18n.set_language(lang)
+    return i18n
 
 
 @pytest.fixture
@@ -339,6 +352,316 @@ class TestChatWidget:
         assert s.BG_SURFACE_DK in bubble.styleSheet()
         assert s.BORDER_DK in bubble.styleSheet()
         assert s.TEXT_PRIMARY_DK in bubble.label.styleSheet()
+
+    # ── B4a: hora en el tooltip y separadores de día ──────────────────────
+
+    @staticmethod
+    def _bubbles(widget):
+        """Todas las burbujas del registro, en orden de inserción."""
+        from src.gui.widgets.chat_widget import MessageBubble
+
+        found = []
+        for i in range(widget.message_layout.count()):
+            item = widget.message_layout.itemAt(i)
+            row = item.widget() if item else None
+            if row is None or row.layout() is None:
+                continue
+            for j in range(row.layout().count()):
+                child = row.layout().itemAt(j).widget()
+                if isinstance(child, MessageBubble):
+                    found.append(child)
+        return found
+
+    @staticmethod
+    def _separators(widget):
+        return [b for b in TestChatWidget._bubbles(widget)
+                if b.property("_separator")]
+
+    @staticmethod
+    def _typing_bubbles(widget):
+        return [b for b in TestChatWidget._bubbles(widget)
+                if b.property("_typing")]
+
+    def test_today_tooltip_shows_only_the_time(self, qtbot):
+        """Hoy basta con la hora: no se pinta nada más bajo la burbuja."""
+        from src.gui.widgets.chat_widget import _format_time
+
+        i18n = _real_i18n("es")
+        from src.gui.widgets.chat_widget import ChatWidget
+
+        widget = ChatWidget(i18n=i18n)
+        qtbot.addWidget(widget)
+        moment = datetime.datetime.now().replace(second=0, microsecond=0)
+
+        widget.add_message("user", "Hola de hoy", timestamp=moment)
+
+        bubble = self._bubbles(widget)[0]
+        assert bubble.toolTip() == _format_time(moment)
+        # Sin timestamp explícito se usa la hora actual.
+        before = datetime.datetime.now()
+        widget.add_message("assistant", "Ahora")
+        after = datetime.datetime.now()
+        tips = [_format_time(before), _format_time(after)]
+        assert self._bubbles(widget)[-1].toolTip() in tips
+
+    def test_yesterday_tooltip_is_translated(self, qtbot):
+        from src.gui.widgets.chat_widget import _format_time
+
+        i18n = _real_i18n("es")
+        from src.gui.widgets.chat_widget import ChatWidget
+
+        widget = ChatWidget(i18n=i18n)
+        qtbot.addWidget(widget)
+        moment = (datetime.datetime.now() - datetime.timedelta(days=1)).replace(
+            second=0, microsecond=0
+        )
+
+        widget.add_message("user", "Hola de ayer", timestamp=moment)
+
+        tip = self._bubbles(widget)[0].toolTip()
+        assert tip == i18n.t("chat.timestamp_yesterday", time=_format_time(moment))
+        assert tip.startswith("Ayer ")
+
+    def test_older_message_tooltip_has_date_and_time(self, qtbot):
+        from src.gui.widgets.chat_widget import _format_date, _format_time
+
+        i18n = _real_i18n("es")
+        from src.gui.widgets.chat_widget import ChatWidget
+
+        widget = ChatWidget(i18n=i18n)
+        qtbot.addWidget(widget)
+        moment = (datetime.datetime.now() - datetime.timedelta(days=5)).replace(
+            second=0, microsecond=0
+        )
+
+        widget.add_message("user", "Hola antiguo", timestamp=moment)
+
+        expected = i18n.t(
+            "chat.timestamp_past",
+            date=_format_date(moment.date()),
+            time=_format_time(moment),
+        )
+        tip = self._bubbles(widget)[0].toolTip()
+        assert tip == expected
+        assert _format_date(moment.date()) in tip
+        assert _format_time(moment) in tip
+
+    def test_day_change_inserts_a_single_separator(self, qtbot):
+        """Al cambiar de día aparece una cabecera, y solo una."""
+        i18n = _real_i18n("es")
+        from src.gui.widgets.chat_widget import ChatWidget
+
+        widget = ChatWidget(i18n=i18n)
+        qtbot.addWidget(widget)
+        now = datetime.datetime.now()
+        yesterday = now - datetime.timedelta(days=1)
+
+        widget.add_message("user", "Hoy uno", timestamp=now)
+        widget.add_message("user", "Ayer uno", timestamp=yesterday)
+        widget.add_message("user", "Ayer dos", timestamp=yesterday)
+
+        separators = self._separators(widget)
+        assert len(separators) == 1
+        assert separators[0].label.text() == "Ayer"
+        # La cabecera no es historial: no sale en toPlainText().
+        assert widget.toPlainText().splitlines() == [
+            "Hoy uno", "Ayer uno", "Ayer dos",
+        ]
+        # Ni la primera mensaje ni los repetidos abren una cabecera.
+        assert separators[0].toolTip() == ""
+
+    def test_separator_text_follows_the_day(self, qtbot):
+        from src.gui.widgets.chat_widget import _format_date
+
+        i18n = _real_i18n("es")
+        from src.gui.widgets.chat_widget import ChatWidget
+
+        widget = ChatWidget(i18n=i18n)
+        qtbot.addWidget(widget)
+        now = datetime.datetime.now()
+        old = now - datetime.timedelta(days=4)
+
+        # El primer mensaje no abre cabecera: hace falta uno anterior.
+        widget.add_message("user", "Hace diez días", timestamp=now - datetime.timedelta(days=10))
+        widget.add_message("user", "De hace cuatro días", timestamp=old)
+        assert self._separators(widget)[-1].label.text() == (
+            i18n.t("chat.day_separator", date=_format_date(old.date()))
+        )
+
+        widget.add_message("user", "De hoy", timestamp=now)
+        assert self._separators(widget)[-1].label.text() == "Hoy"
+
+        widget.add_message("user", "De ayer", timestamp=now - datetime.timedelta(days=1))
+        assert self._separators(widget)[-1].label.text() == "Ayer"
+
+    def test_first_message_never_opens_a_separator(self, qtbot):
+        from src.gui.widgets.chat_widget import ChatWidget
+
+        widget = ChatWidget(i18n=_real_i18n("es"))
+        qtbot.addWidget(widget)
+
+        widget.add_message("user", "Primer mensaje", timestamp=datetime.datetime.now())
+
+        assert self._separators(widget) == []
+
+    def test_clear_forgets_the_day_and_the_typing_timer(self, qtbot):
+        from src.gui.widgets.chat_widget import ChatWidget
+
+        widget = ChatWidget(i18n=_real_i18n("es"))
+        qtbot.addWidget(widget)
+        widget.set_typing(True)
+        assert widget.is_typing is True
+
+        widget.clear()
+
+        assert widget.is_typing is False
+        assert widget._typing_timer.isActive() is False
+        assert self._bubbles(widget) == []
+        assert widget.toPlainText() == ""
+
+    # ── B4b: indicador de "escribiendo..." ────────────────────────────────
+
+    def test_set_typing_adds_exactly_one_bubble(self, qtbot):
+        from src.gui.widgets.chat_widget import ChatWidget
+
+        widget = ChatWidget(i18n=_real_i18n("es"))
+        qtbot.addWidget(widget)
+
+        widget.set_typing(True)
+
+        assert widget.is_typing is True
+        typing = self._typing_bubbles(widget)
+        assert len(typing) == 1
+        # Idempotente: dos llamadas no duplican la burbuja.
+        widget.set_typing(True)
+        assert len(self._typing_bubbles(widget)) == 1
+
+    def test_set_typing_false_removes_the_bubble_and_stops_the_timer(self, qtbot):
+        from src.gui.widgets.chat_widget import ChatWidget
+
+        widget = ChatWidget(i18n=_real_i18n("es"))
+        qtbot.addWidget(widget)
+        widget.set_typing(True)
+
+        widget.set_typing(False)
+
+        assert widget.is_typing is False
+        assert self._typing_bubbles(widget) == []
+        assert widget._typing_timer.isActive() is False
+        # Idempotente también al desactivar.
+        widget.set_typing(False)
+        assert widget.is_typing is False
+
+    def test_typing_bubble_is_not_plain_text(self, qtbot):
+        """Los puntos animados no son historial: el texto sigue limpio."""
+        from src.gui.widgets.chat_widget import ChatWidget
+
+        widget = ChatWidget(i18n=_real_i18n("es"))
+        qtbot.addWidget(widget)
+        widget.add_message("user", "Hola")
+
+        widget.set_typing(True)
+
+        assert widget.toPlainText() == "Hola"
+        assert self._typing_bubbles(widget)[0].label.text() == ""
+
+    def test_typing_animation_cycles_the_dots(self, qtbot):
+        from src.gui.widgets.chat_widget import ChatWidget
+
+        widget = ChatWidget(i18n=_real_i18n("es"))
+        qtbot.addWidget(widget)
+        widget.set_typing(True)
+        bubble = self._typing_bubbles(widget)[0]
+
+        try:
+            qtbot.waitUntil(lambda: bubble.label.text() == ".", timeout=2000)
+            qtbot.waitUntil(lambda: bubble.label.text() == "..", timeout=2000)
+        finally:
+            widget.set_typing(False)  # no dejar el temporizador vivo
+        assert bubble.label.text() == ".."
+
+    # ── stick-to-bottom con historial ya desbordado ────────────────────────
+
+    def test_new_message_sticks_to_bottom_with_overflowing_history(self, qtbot):
+        """Con el historial ya desbordado el mensaje nuevo debe verse.
+
+        Regresión: el flag de pegado se calmaba mirando un ``maximum()``
+        todavía obsoleto y el ``rangeChanged`` posterior ya no lo reencendía.
+        """
+        from src.gui.widgets.chat_widget import ChatWidget
+
+        widget = ChatWidget(i18n=_real_i18n("es"))
+        widget.resize(420, 320)
+        qtbot.addWidget(widget)
+        widget.show()
+
+        for i in range(30):
+            widget.add_message(
+                "assistant", f"Respuesta {i} bastante larga de verdad",
+            )
+
+        sb = widget.scroll_area.verticalScrollBar()
+        qtbot.waitUntil(lambda: sb.maximum() > 0, timeout=2000)
+        qtbot.waitUntil(lambda: sb.value() == sb.maximum(), timeout=2000)
+        max_before = sb.maximum()
+
+        widget.add_message("assistant", "Un mensaje nuevo que sí debe verse")
+
+        qtbot.waitUntil(lambda: sb.maximum() > max_before, timeout=2000)
+        qtbot.waitUntil(lambda: sb.value() == sb.maximum(), timeout=2000)
+        assert sb.value() == sb.maximum()
+
+    def test_separator_sticks_to_bottom_with_overflowing_history(self, qtbot):
+        """La cabecera de día entra con la misma lógica de pegado al fondo."""
+        from src.gui.widgets.chat_widget import ChatWidget
+
+        widget = ChatWidget(i18n=_real_i18n("es"))
+        widget.resize(420, 320)
+        qtbot.addWidget(widget)
+        widget.show()
+        now = datetime.datetime.now()
+
+        for i in range(30):
+            widget.add_message(
+                "assistant", f"Respuesta {i} bastante larga de verdad",
+                timestamp=now,
+            )
+
+        sb = widget.scroll_area.verticalScrollBar()
+        qtbot.waitUntil(lambda: sb.maximum() > 0, timeout=2000)
+        qtbot.waitUntil(lambda: sb.value() == sb.maximum(), timeout=2000)
+        max_before = sb.maximum()
+
+        widget.add_message(
+            "user", "Mensaje de ayer con cabecera",
+            timestamp=now - datetime.timedelta(days=1),
+        )
+
+        assert len(self._separators(widget)) == 1
+        qtbot.waitUntil(lambda: sb.maximum() > max_before, timeout=2000)
+        qtbot.waitUntil(lambda: sb.value() == sb.maximum(), timeout=2000)
+        assert sb.value() == sb.maximum()
+
+    def test_removing_the_typing_bubble_keeps_the_view_at_bottom(self, qtbot):
+        from src.gui.widgets.chat_widget import ChatWidget
+
+        widget = ChatWidget(i18n=_real_i18n("es"))
+        widget.resize(420, 320)
+        qtbot.addWidget(widget)
+        widget.show()
+
+        for i in range(30):
+            widget.add_message("assistant", f"Respuesta {i} bastante larga")
+
+        sb = widget.scroll_area.verticalScrollBar()
+        qtbot.waitUntil(lambda: sb.maximum() > 0, timeout=2000)
+        qtbot.waitUntil(lambda: sb.value() == sb.maximum(), timeout=2000)
+        widget.set_typing(True)
+
+        widget.set_typing(False)
+
+        qtbot.waitUntil(lambda: sb.value() == sb.maximum(), timeout=2000)
+        assert sb.value() == sb.maximum()
 
 
 class TestNotesDialog:

@@ -375,6 +375,183 @@ class TestSettingsSearch:
         assert len(hidden) == 0
 
 
+class TestSettingsSearchByRowLabel:
+    """B7: el buscador debe encontrar los ajustes por su etiqueta de fila.
+
+    Antes solo comparaba con el título de la página y del QGroupBox, así que
+    "timeout", "endpoint" o "api" no encontraban nada aunque estuvieran
+    escritos en pantalla.
+    """
+
+    MIND_PAGE = 4
+
+    def _visible_groups(self, dialog, page_index):
+        return [
+            g for g in dialog._pages[page_index].findChildren(QGroupBox)
+            if g.property("_search_text") and not g.isHidden()
+        ]
+
+    def _visible_pages(self, dialog):
+        return [
+            idx for idx in range(dialog._nav.count())
+            if not dialog._nav.item(idx).isHidden()
+        ]
+
+    def test_timeout_label_finds_its_group(self, qtbot, mock_config, mock_i18n):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+
+        dialog._search_field.setText("timeout")
+
+        visible = self._visible_groups(dialog, self.MIND_PAGE)
+        assert len(visible) == 1
+        assert visible[0].property("_search_text") == "dialogs.settings.mind_llm"
+        # Ningún otro grupo de la página se abre.
+        hidden = [
+            g.property("_search_text")
+            for g in dialog._pages[self.MIND_PAGE].findChildren(QGroupBox)
+            if g.property("_search_text") and g.isHidden()
+        ]
+        assert hidden == [
+            "dialogs.settings.memory_general",
+            "dialogs.settings.memory_chroma",
+            "dialogs.settings.memory_episodic",
+        ]
+
+    def test_query_matching_two_pages_shows_both(self, qtbot, mock_config,
+                                                 mock_i18n):
+        """"timeout" está en Mente y en Comportamiento: se abren ambas."""
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+
+        dialog._search_field.setText("timeout")
+
+        assert self._visible_pages(dialog) == [3, 4]
+        assert [
+            g.property("_search_text")
+            for g in self._visible_groups(dialog, 3)
+        ] == ["dialogs.settings.behavior_sleep"]
+
+    def test_endpoint_label_does_not_hide_the_other_groups(
+        self, qtbot, mock_config, mock_i18n
+    ):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+
+        dialog._search_field.setText("endpoint")
+
+        shown = [
+            g.property("_search_text")
+            for g in dialog._pages[self.MIND_PAGE].findChildren(QGroupBox)
+            if not g.isHidden()
+        ]
+        assert shown == ["dialogs.settings.mind_llm"]
+        assert self._visible_pages(dialog) == [self.MIND_PAGE]
+
+    def test_api_key_label_finds_the_llm_group(self, qtbot, mock_config,
+                                               mock_i18n):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+
+        dialog._search_field.setText("api")
+
+        assert [
+            g.property("_search_text")
+            for g in self._visible_groups(dialog, self.MIND_PAGE)
+        ] == ["dialogs.settings.mind_llm"]
+
+    def test_slider_labels_are_searchable_too(self, qtbot, mock_config, mock_i18n):
+        """Los deslizadores construyen su fila a mano: también cuentan."""
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+
+        dialog._search_field.setText("episodic_auto_threshold")
+
+        shown = [
+            g.property("_search_text")
+            for g in dialog._pages[self.MIND_PAGE].findChildren(QGroupBox)
+            if not g.isHidden()
+        ]
+        assert shown == ["dialogs.settings.memory_episodic"]
+
+    def test_search_still_filters_by_page_title(self, qtbot, mock_config, mock_i18n):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+
+        dialog._search_field.setText("dialogs.settings.tab_behavior")
+
+        assert self._visible_pages(dialog) == [3]
+        assert len(self._visible_groups(dialog, 3)) == 4
+
+    def test_group_title_still_matches(self, qtbot, mock_config, mock_i18n):
+        """Lo nuevo no rompe la búsqueda por título de grupo."""
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+
+        dialog._search_field.setText("memory_chroma")
+
+        shown = [
+            g.property("_search_text")
+            for g in dialog._pages[self.MIND_PAGE].findChildren(QGroupBox)
+            if not g.isHidden()
+        ]
+        assert shown == ["dialogs.settings.memory_chroma"]
+
+    def test_clearing_the_query_restores_everything(self, qtbot, mock_config,
+                                                   mock_i18n):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        dialog._search_field.setText("timeout")
+
+        dialog._search_field.setText("")
+
+        hidden = [
+            g for g in dialog._pages[0].findChildren(QGroupBox)
+            if g.property("_search_text") and g.isHidden()
+        ]
+        assert hidden == []
+        assert len(self._visible_groups(dialog, self.MIND_PAGE)) == 4
+
+
+#: Control -> etiqueta con la que se construyó su fila (claves del mock i18n).
+TIP_CONTROLS = {
+    "llm_model": "dialogs.settings.model",
+    "llm_endpoint": "dialogs.settings.endpoint",
+    "llm_api_key": "dialogs.settings.api_key",
+    "llm_timeout": "dialogs.settings.llm_timeout",
+    "llama_path": "dialogs.settings.model_path",
+    "llama_ctx": "dialogs.settings.n_ctx",
+    "mem_short_term": "dialogs.settings.max_short_term_messages",
+    "mem_chroma_path": "dialogs.settings.chroma_path",
+    "mem_embed_model": "dialogs.settings.embedding_model",
+    "mem_episodic_msg": "dialogs.settings.episodic_message_threshold",
+    "mem_episodic_threshold": "dialogs.settings.episodic_auto_threshold",
+    "prob_spin": "dialogs.settings.random_prob_label",
+    "cooldown_spin": "dialogs.settings.cooldown_label",
+    "max_spin": "dialogs.settings.max_per_hour_label",
+    "ws_transition": "dialogs.settings.ws_transition_speed",
+    "sleep_timeout_spin": "dialogs.settings.sleep_timeout",
+    "ui_char_size": "dialogs.settings.character_size",
+    "ui_bubble_lines": "dialogs.settings.bubble_max_lines",
+    "ui_bubble_fade": "dialogs.settings.bubble_duration",
+    "ui_bubble_type": "dialogs.settings.bubble_typewriter_interval",
+}
+
+
+class TestSettingsTooltips:
+    """B5: cada ajuste sensible explica para qué sirve."""
+
+    @pytest.mark.parametrize("attr,label_key", sorted(TIP_CONTROLS.items()))
+    def test_control_has_a_translated_tooltip(
+        self, qtbot, mock_config, mock_i18n, attr, label_key
+    ):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+
+        control = getattr(dialog, attr)
+        # El mock de i18n devuelve la propia clave: el tooltip sale traducido.
+        assert control.toolTip() == f"dialogs.settings.tip_{attr}"
+        # Y no es un calco de la etiqueta del control.
+        assert control.toolTip() != label_key
+
+    def test_every_control_of_the_list_is_covered(self, qtbot, mock_config,
+                                                  mock_i18n):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        for attr in TIP_CONTROLS:
+            assert getattr(dialog, attr).toolTip() != "", attr
+
+
 class TestSettingsNavSizing:
     def test_nav_width_fits_content(self, qtbot, mock_config, mock_i18n):
         dialog = _make_dialog(qtbot, mock_config, mock_i18n)

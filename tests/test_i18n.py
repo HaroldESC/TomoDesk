@@ -356,7 +356,41 @@ NEW_UI_KEYS = [
     "dialogs.reminders.empty",
     "dialogs.reminders.cancel_confirm_title",
     "dialogs.reminders.cancel_confirm_body",
+    # Hora en el tooltip y separadores de día del chat (Fase 3, Ola 2).
+    "chat.timestamp_yesterday",
+    "chat.timestamp_past",
+    "chat.day_today",
+    "chat.day_yesterday",
+    "chat.day_separator",
 ]
+
+#: Tooltips de Ajustes (B5): clave del tooltip -> etiqueta del control.
+TIP_LABEL_KEYS = {
+    "tip_llm_model": "model",
+    "tip_llm_endpoint": "endpoint",
+    "tip_llm_api_key": "api_key",
+    "tip_llm_timeout": "llm_timeout",
+    "tip_llama_path": "model_path",
+    "tip_llama_ctx": "n_ctx",
+    "tip_mem_short_term": "max_short_term_messages",
+    "tip_mem_chroma_path": "chroma_path",
+    "tip_mem_embed_model": "embedding_model",
+    "tip_mem_episodic_msg": "episodic_message_threshold",
+    "tip_mem_episodic_threshold": "episodic_auto_threshold",
+    "tip_prob_spin": "random_prob_label",
+    "tip_cooldown_spin": "cooldown_label",
+    "tip_max_spin": "max_per_hour_label",
+    "tip_ws_transition": "ws_transition_speed",
+    "tip_sleep_timeout_spin": "sleep_timeout",
+    "tip_ui_char_size": "character_size",
+    "tip_ui_bubble_lines": "bubble_max_lines",
+    "tip_ui_bubble_fade": "bubble_duration",
+    "tip_ui_bubble_type": "bubble_typewriter_interval",
+}
+
+TIP_KEYS = sorted(TIP_LABEL_KEYS)
+
+NEW_UI_KEYS += [f"dialogs.settings.{name}" for name in TIP_KEYS]
 
 
 def _lookup(data, key):
@@ -418,3 +452,90 @@ def test_commands_tooltip_only_lists_known_commands(lang):
 
     assert listed, "el tooltip deberia listar comandos"
     assert listed <= known, f"comandos inexistentes en el tooltip: {listed - known}"
+
+
+class TestChatTimestampKeys:
+    """B4a: la hora del chat se pinta con los marcadores de plantilla."""
+
+    @pytest.mark.parametrize("lang", ["en", "es"])
+    def test_yesterday_renders_the_time(self, lang):
+        i18n = I18nManager(str(LOCALES_DIR), default_lang="en")
+        i18n.set_language(lang)
+        text = i18n.t("chat.timestamp_yesterday", time="09:41")
+        assert "09:41" in text
+        assert "{time}" not in text
+        assert i18n.t("chat.day_yesterday") in text
+
+    @pytest.mark.parametrize("lang", ["en", "es"])
+    def test_past_renders_date_and_time(self, lang):
+        i18n = I18nManager(str(LOCALES_DIR), default_lang="en")
+        i18n.set_language(lang)
+        text = i18n.t("chat.timestamp_past", date="03/10/2026", time="09:41")
+        assert "03/10/2026" in text and "09:41" in text
+        assert "{date}" not in text and "{time}" not in text
+
+    @pytest.mark.parametrize("lang", ["en", "es"])
+    def test_day_separator_renders_the_date(self, lang):
+        i18n = I18nManager(str(LOCALES_DIR), default_lang="en")
+        i18n.set_language(lang)
+        text = i18n.t("chat.day_separator", date="03/10/2026")
+        assert text == "03/10/2026"
+
+    @pytest.mark.parametrize("lang", ["en", "es"])
+    def test_day_labels_have_no_placeholder(self, lang):
+        i18n = I18nManager(str(LOCALES_DIR), default_lang="en")
+        i18n.set_language(lang)
+        assert i18n.t("chat.day_today").strip()
+        assert i18n.t("chat.day_yesterday").strip()
+
+    def test_day_labels_differ_between_languages(self):
+        i18n = I18nManager(str(LOCALES_DIR), default_lang="en")
+        i18n.set_language("en")
+        en_today = i18n.t("chat.day_today")
+        en_yesterday = i18n.t("chat.day_yesterday")
+        i18n.set_language("es")
+        assert i18n.t("chat.day_today") == "Hoy" != en_today
+        assert i18n.t("chat.day_yesterday") == "Ayer" != en_yesterday
+
+
+class TestSettingsTooltips:
+    """B5: los tooltips explican para qué sirve el ajuste, no repiten la etiqueta."""
+
+    @staticmethod
+    def _settings(lang):
+        data = json.loads((LOCALES_DIR / f"{lang}.json").read_text(encoding="utf-8"))
+        return data["dialogs"]["settings"]
+
+    @pytest.mark.parametrize("tip_key", TIP_KEYS)
+    @pytest.mark.parametrize("lang", ["en", "es"])
+    def test_tooltip_does_not_repeat_its_label(self, tip_key, lang):
+        settings = self._settings(lang)
+        tip = settings[tip_key]
+        label = settings[TIP_LABEL_KEYS[tip_key]]
+        core = label.rstrip(":").strip()
+
+        assert tip != label, f"{tip_key} es un calco de la etiqueta"
+        assert not tip.lower().startswith(core.lower()), (
+            f"{tip_key} empieza repitiendo la etiqueta: {tip!r}"
+        )
+        assert len(tip) > len(label), f"{tip_key} no aporta información extra"
+
+    @pytest.mark.parametrize("tip_key", TIP_KEYS)
+    def test_tooltip_is_translated(self, tip_key):
+        en = self._settings("en")[tip_key]
+        es = self._settings("es")[tip_key]
+        assert en.strip() and es.strip()
+        assert en != es, f"{tip_key} no está traducido"
+
+    @pytest.mark.parametrize("tip_key", TIP_KEYS)
+    def test_tooltip_is_wired_to_a_control(self, tip_key):
+        """La clave no puede quedarse huérfana en los locales."""
+        source = (
+            PROJECT_ROOT / "src" / "gui" / "windows" / "settings_dialog.py"
+        ).read_text(encoding="utf-8")
+        assert f"dialogs.settings.{tip_key}" in source, tip_key
+
+    @pytest.mark.parametrize("tip_key", TIP_KEYS)
+    def test_tooltip_has_no_placeholder(self, tip_key):
+        for lang in ("en", "es"):
+            assert "{" not in self._settings(lang)[tip_key], tip_key

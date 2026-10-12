@@ -1,4 +1,6 @@
 import json
+import threading
+import time
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -8,6 +10,21 @@ from main import _init_pack_manager
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 LOCALES_DIR = PROJECT_ROOT / "data" / "locales"
+
+
+def _spin_until(qapp, predicate, timeout: float = 5.0) -> bool:
+    """Procesa eventos hasta que ``predicate`` sea cierto.
+
+    El hilo del LLM avisa con un ``threading.Event`` y la señal llega en cola,
+    así que hay que bombear el bucle: nada de ``time.sleep`` a pelo.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        qapp.processEvents()
+        time.sleep(0.01)
+    return predicate()
 
 
 @pytest.fixture
@@ -540,4 +557,144 @@ class TestMainWindowChatInput:
             assert window.input.placeholderText() == "Escribe un mensaje..."
             assert "/help" in window.input.toolTip()
         finally:
+            window.close()
+
+
+class _BlockingEngine:
+    """Motor de mentira: se bloquea hasta que el test lo suelta."""
+
+    def __init__(self, response="Respuesta del asistente", error=None):
+        self.response = response
+        self.error = error
+        self.started = threading.Event()
+        self.release = threading.Event()
+
+    def chat(self, _text):
+        self.started.set()
+        self.release.wait(5)
+        if self.error is not None:
+            raise self.error
+        return self.response
+
+
+class TestMainWindowTypingIndicator:
+    """El chat muestra "escribiendo..." mientras el LLM piensa (B4b)."""
+
+    def _window(self, config, memory_manager, i18n, engine):
+        from src.gui.windows.main_window import MainWindow
+
+        return MainWindow(
+            config=config,
+            memory_manager=memory_manager,
+            i18n=i18n,
+            engine=engine,
+        )
+
+    def _typing_bubbles(self, window):
+        return [
+            bubble
+            for bubble in window.chat._iter_bubbles()
+            if bubble.property("_typing")
+        ]
+
+    def test_sending_shows_the_typing_bubble_until_the_answer(
+        self, qapp, mock_config, mock_memory_manager
+    ):
+        engine = _BlockingEngine()
+        window = self._window(
+            mock_config, mock_memory_manager, _real_i18n("en"), engine
+        )
+        try:
+            ready = window.chat.toPlainText().splitlines()
+            window.input.setText("hola")
+            window._send_message()
+
+            assert engine.started.wait(5)
+            assert window.chat.is_typing is True
+            assert len(self._typing_bubbles(window)) == 1
+
+            engine.release.set()
+            assert _spin_until(
+                qapp, lambda: "Respuesta del asistente" in window.chat.toPlainText()
+            )
+
+            assert window.chat.is_typing is False
+            assert self._typing_bubbles(window) == []
+            assert window.chat.toPlainText().splitlines() == ready + [
+                "hola", "Respuesta del asistente",
+            ]
+        finally:
+            engine.release.set()
+            qapp.processEvents()
+            window.close()
+
+    def test_error_clears_the_typing_bubble(
+        self, qapp, mock_config, mock_memory_manager
+    ):
+        engine = _BlockingEngine(error=RuntimeError("boom"))
+        window = self._window(
+            mock_config, mock_memory_manager, _real_i18n("en"), engine
+        )
+        try:
+            window.input.setText("hola")
+            window._send_message()
+
+            assert engine.started.wait(5)
+            assert window.chat.is_typing is True
+
+            engine.release.set()
+            assert _spin_until(qapp, lambda: "boom" in window.chat.toPlainText())
+
+            assert window.chat.is_typing is False
+            assert self._typing_bubbles(window) == []
+        finally:
+            engine.release.set()
+            qapp.processEvents()
+            window.close()
+
+    def test_clear_chat_removes_the_typing_bubble(
+        self, qapp, mock_config, mock_memory_manager
+    ):
+        engine = _BlockingEngine()
+        window = self._window(
+            mock_config, mock_memory_manager, _real_i18n("en"), engine
+        )
+        try:
+            window.input.setText("hola")
+            window._send_message()
+            assert engine.started.wait(5)
+            assert window.chat.is_typing is True
+
+            window._clear_chat()
+
+            assert window.chat.is_typing is False
+            assert self._typing_bubbles(window) == []
+            assert window.chat.toPlainText() == (
+                "Chat cleared. Short-term memory reset."
+            )
+        finally:
+            engine.release.set()
+            qapp.processEvents()
+            window.close()
+
+    def test_typing_bubble_never_enters_the_history(
+        self, qapp, mock_config, mock_memory_manager
+    ):
+        engine = _BlockingEngine()
+        window = self._window(
+            mock_config, mock_memory_manager, _real_i18n("en"), engine
+        )
+        try:
+            ready = window.chat.toPlainText().splitlines()
+            window.input.setText("hola")
+            window._send_message()
+            assert engine.started.wait(5)
+
+            assert window.chat.toPlainText().splitlines() == ready + ["hola"]
+
+            engine.release.set()
+            assert _spin_until(qapp, lambda: not window.chat.is_typing)
+        finally:
+            engine.release.set()
+            qapp.processEvents()
             window.close()

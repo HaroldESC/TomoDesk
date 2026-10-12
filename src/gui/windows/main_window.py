@@ -281,12 +281,15 @@ class MainWindow(QMainWindow):
         self.status_timer.start(5000)
 
     def add_system_message(self, text: str):
+        # La respuesta (o el error) ya está: se retira "escribiendo...".
+        self.chat.set_typing(False)
         self.chat.add_message("system", text)
 
     def add_user_message(self, text: str):
         self.chat.add_message("user", text)
 
     def add_assistant_message(self, text: str):
+        self.chat.set_typing(False)
         self.chat.add_message("assistant", text)
 
     def _send_message(self):
@@ -362,6 +365,9 @@ class MainWindow(QMainWindow):
         self.send_btn.setEnabled(False)
         self.send_btn.setText(self.i18n.t("chat.thinking"))
         self.input.setEnabled(False)
+        # Indicador de espera en el propio registro del chat; se retira en
+        # add_assistant_message / add_system_message (éxito o error).
+        self.chat.set_typing(True)
 
         if self._chat_poller:
             self._chat_poller.stop()
@@ -507,6 +513,7 @@ class MainWindow(QMainWindow):
         logger.info("Tutorial replayed")
 
     def _clear_chat(self):
+        self.chat.set_typing(False)
         self.chat.clear()
         self.memory_manager.clear_short_term()
         self.add_system_message(self.i18n.t("chat.clear_system_msg"))

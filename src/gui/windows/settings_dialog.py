@@ -103,6 +103,22 @@ def _soft_wrap_path(text: str) -> str:
     return text.replace("\\", "\\\u200b").replace("/", "/\u200b")
 
 
+def _group_row_labels(group: QGroupBox) -> str:
+    """Etiquetas de fila de un grupo, en minusculas y separadas por espacios.
+
+    El buscador solo miraba el titulo del grupo, asi que escribir "timeout" o
+    "api" no encontraba nada aunque el ajuste estuviera escrito en pantalla.
+    Cada control construido con ``_add_row`` / ``_labeled_slider`` guarda su
+    etiqueta traducida en la propiedad ``_row_label``.
+    """
+    labels = []
+    for widget in group.findChildren(QWidget):
+        label = widget.property("_row_label")
+        if label:
+            labels.append(str(label))
+    return " ".join(labels)
+
+
 class SettingsDialog(QDialog):
     sprite_changed = Signal(str)
     language_changed = Signal()
@@ -140,6 +156,9 @@ class SettingsDialog(QDialog):
         row.addWidget(lbl, 0)
         row.addWidget(widget, 1)
         layout.addLayout(row)
+        # La etiqueta traducida es lo que el usuario ve escrito al lado del
+        # control: el buscador debe encontrarla (p.ej. "timeout" o "api").
+        widget.setProperty("_row_label", (label or "").lower())
 
     def _add_group(self, layout, title_key, controls_builder):
         group = QGroupBox(self.i18n.t(title_key))
@@ -176,6 +195,9 @@ class SettingsDialog(QDialog):
         s, row = self._slider_with_label(lo, hi, val, suffix)
         row.insertWidget(0, QLabel(label))
         layout.addLayout(row)
+        # Esta fila se construye a mano: se registra igual que en _add_row
+        # para que el buscador encuentre tambien los deslizadores.
+        s.setProperty("_row_label", (label or "").lower())
         return s
 
     def _scrollable(self, widget, hmargin=75):
@@ -217,6 +239,9 @@ class SettingsDialog(QDialog):
         self.ui_char_size = self._labeled_slider(
             layout, self.i18n.t("dialogs.settings.character_size"),
             50, 500, ui.get("character_size", 150), "px",
+        )
+        self.ui_char_size.setToolTip(
+            self.i18n.t("dialogs.settings.tip_ui_char_size")
         )
 
         self.ui_overlay_default = QComboBox()
@@ -268,12 +293,18 @@ class SettingsDialog(QDialog):
         self.ui_bubble_lines = QSpinBox()
         self.ui_bubble_lines.setRange(1, 20)
         self.ui_bubble_lines.setValue(ui.get("bubble_max_lines", 5))
+        self.ui_bubble_lines.setToolTip(
+            self.i18n.t("dialogs.settings.tip_ui_bubble_lines")
+        )
         self._add_row(layout, self.i18n.t("dialogs.settings.bubble_max_lines"), self.ui_bubble_lines)
 
         self.ui_bubble_type = QSpinBox()
         self.ui_bubble_type.setRange(0, 500)
         self.ui_bubble_type.setSuffix(" ms")
         self.ui_bubble_type.setValue(ui.get("bubble_typewriter_interval_ms", 30))
+        self.ui_bubble_type.setToolTip(
+            self.i18n.t("dialogs.settings.tip_ui_bubble_type")
+        )
         self._add_row(layout, self.i18n.t("dialogs.settings.bubble_typewriter_interval"),
                       self.ui_bubble_type)
 
@@ -283,6 +314,9 @@ class SettingsDialog(QDialog):
         self.ui_bubble_fade.setSpecialValueText(self.i18n.t("dialogs.settings.bubble_never"))
         fade_sec = ui.get("bubble_fade_delay_ms", 4000) // 1000
         self.ui_bubble_fade.setValue(fade_sec)
+        self.ui_bubble_fade.setToolTip(
+            self.i18n.t("dialogs.settings.tip_ui_bubble_fade")
+        )
         self._add_row(layout, self.i18n.t("dialogs.settings.bubble_duration"), self.ui_bubble_fade)
 
     def _build_appearance_hints(self, layout):
@@ -661,19 +695,31 @@ class SettingsDialog(QDialog):
         self._add_row(layout, self.i18n.t("dialogs.settings.provider"), self.llm_provider)
 
         self.llm_model = QLineEdit(llm.get("model", "llama3.2:1b"))
+        self.llm_model.setToolTip(
+            self.i18n.t("dialogs.settings.tip_llm_model")
+        )
         self._add_row(layout, self.i18n.t("dialogs.settings.model"), self.llm_model)
 
         self.llm_endpoint = QLineEdit(llm.get("endpoint", "http://localhost:11434"))
+        self.llm_endpoint.setToolTip(
+            self.i18n.t("dialogs.settings.tip_llm_endpoint")
+        )
         self._add_row(layout, self.i18n.t("dialogs.settings.endpoint"), self.llm_endpoint)
 
         self.llm_api_key = QLineEdit(_creds.get_secret("llm_api_key") or "")
         self.llm_api_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self.llm_api_key.setToolTip(
+            self.i18n.t("dialogs.settings.tip_llm_api_key")
+        )
         self._add_row(layout, self.i18n.t("dialogs.settings.api_key"), self.llm_api_key)
 
         self.llm_timeout = QSpinBox()
         self.llm_timeout.setRange(5, 300)
         self.llm_timeout.setSuffix("s")
         self.llm_timeout.setValue(llm.get("timeout", 60))
+        self.llm_timeout.setToolTip(
+            self.i18n.t("dialogs.settings.tip_llm_timeout")
+        )
         self._add_row(layout, self.i18n.t("dialogs.settings.llm_timeout"), self.llm_timeout)
 
         self._build_llama_cpp(layout)
@@ -683,6 +729,9 @@ class SettingsDialog(QDialog):
 
         path_row = QHBoxLayout()
         self.llama_path = QLineEdit(llm_cpp.get("model_path", ""))
+        self.llama_path.setToolTip(
+            self.i18n.t("dialogs.settings.tip_llama_path")
+        )
         path_row.addWidget(self.llama_path, stretch=1)
         browse_btn = QPushButton(self.i18n.t("dialogs.settings.browse"))
         browse_btn.setObjectName("flat")
@@ -696,6 +745,9 @@ class SettingsDialog(QDialog):
         self.llama_ctx.setRange(256, 131072)
         self.llama_ctx.setSingleStep(512)
         self.llama_ctx.setValue(llm_cpp.get("n_ctx", 4096))
+        self.llama_ctx.setToolTip(
+            self.i18n.t("dialogs.settings.tip_llama_ctx")
+        )
         self._add_row(layout, self.i18n.t("dialogs.settings.n_ctx"), self.llama_ctx)
 
         dl_row = QHBoxLayout()
@@ -892,6 +944,9 @@ class SettingsDialog(QDialog):
         self.mem_short_term = QSpinBox()
         self.mem_short_term.setRange(1, 100)
         self.mem_short_term.setValue(mem.get("max_short_term_messages", 20))
+        self.mem_short_term.setToolTip(
+            self.i18n.t("dialogs.settings.tip_mem_short_term")
+        )
         self._add_row(layout, self.i18n.t("dialogs.settings.max_short_term_messages"),
                       self.mem_short_term)
 
@@ -909,6 +964,9 @@ class SettingsDialog(QDialog):
 
         path_row = QHBoxLayout()
         self.mem_chroma_path = QLineEdit(mem.get("chroma_persist_path", "./chroma_db"))
+        self.mem_chroma_path.setToolTip(
+            self.i18n.t("dialogs.settings.tip_mem_chroma_path")
+        )
         path_row.addWidget(self.mem_chroma_path, stretch=1)
         browse_btn = QPushButton(self.i18n.t("dialogs.settings.browse"))
         browse_btn.setObjectName("flat")
@@ -920,6 +978,9 @@ class SettingsDialog(QDialog):
 
         self.mem_embed_model = QComboBox()
         self.mem_embed_model.setEditable(True)
+        self.mem_embed_model.setToolTip(
+            self.i18n.t("dialogs.settings.tip_mem_embed_model")
+        )
         known_models = [
             "all-MiniLM-L6-v2", "all-mpnet-base-v2",
             "BAAI/bge-small-en-v1.5", "intfloat/e5-small-v2",
@@ -945,12 +1006,18 @@ class SettingsDialog(QDialog):
         self.mem_episodic_msg = QSpinBox()
         self.mem_episodic_msg.setRange(5, 50)
         self.mem_episodic_msg.setValue(mem.get("episodic_message_threshold", 15))
+        self.mem_episodic_msg.setToolTip(
+            self.i18n.t("dialogs.settings.tip_mem_episodic_msg")
+        )
         self._add_row(layout, self.i18n.t("dialogs.settings.episodic_message_threshold"),
                       self.mem_episodic_msg)
 
         self.mem_episodic_threshold = self._labeled_slider(
             layout, self.i18n.t("dialogs.settings.episodic_auto_threshold"),
             0, 100, int(mem.get("episodic_auto_threshold", 0.6) * 100),
+        )
+        self.mem_episodic_threshold.setToolTip(
+            self.i18n.t("dialogs.settings.tip_mem_episodic_threshold")
         )
 
         self.mem_auto_summary = QCheckBox(self.i18n.t("dialogs.settings.episodic_auto_summary"))
@@ -977,16 +1044,25 @@ class SettingsDialog(QDialog):
         self.cooldown_spin.setRange(60, 7200)
         self.cooldown_spin.setSuffix("s")
         self.cooldown_spin.setValue(modes.get("proactive_cooldown_seconds", 1800))
+        self.cooldown_spin.setToolTip(
+            self.i18n.t("dialogs.settings.tip_cooldown_spin")
+        )
         self._add_row(layout, self.i18n.t("dialogs.settings.cooldown_label"), self.cooldown_spin)
 
         self.max_spin = QSpinBox()
         self.max_spin.setRange(0, 20)
         self.max_spin.setValue(modes.get("max_comments_per_hour", 2))
+        self.max_spin.setToolTip(
+            self.i18n.t("dialogs.settings.tip_max_spin")
+        )
         self._add_row(layout, self.i18n.t("dialogs.settings.max_per_hour_label"), self.max_spin)
 
         self.prob_spin = self._labeled_slider(
             layout, self.i18n.t("dialogs.settings.random_prob_label"),
             0, 100, int(modes.get("comment_probability", 0.1) * 100),
+        )
+        self.prob_spin.setToolTip(
+            self.i18n.t("dialogs.settings.tip_prob_spin")
         )
 
     def _build_behavior_sleep(self, layout):
@@ -1002,6 +1078,9 @@ class SettingsDialog(QDialog):
         self.sleep_timeout_spin.setRange(30, 3600)
         self.sleep_timeout_spin.setSuffix(" s")
         self.sleep_timeout_spin.setValue(ui.get("sleep_timeout_seconds", 300))
+        self.sleep_timeout_spin.setToolTip(
+            self.i18n.t("dialogs.settings.tip_sleep_timeout_spin")
+        )
         self._add_row(layout, self.i18n.t("dialogs.settings.sleep_timeout"),
                       self.sleep_timeout_spin)
 
@@ -1107,6 +1186,9 @@ class SettingsDialog(QDialog):
         self.ws_transition = self._labeled_slider(
             layout, self.i18n.t("dialogs.settings.ws_transition_speed"),
             0, 40, int(ws.get("transition_speed", 0.5) * 20),
+        )
+        self.ws_transition.setToolTip(
+            self.i18n.t("dialogs.settings.tip_ws_transition")
         )
 
         self.ws_fallback = QComboBox()
@@ -1593,7 +1675,12 @@ class SettingsDialog(QDialog):
             group_visible = 0
             for group in groups:
                 group_text = group.property("_search_text") or ""
-                matches = (not query) or page_match or query in group_text
+                matches = (
+                    (not query)
+                    or page_match
+                    or query in group_text
+                    or query in _group_row_labels(group)
+                )
                 group.setVisible(matches)
                 if matches:
                     group_visible += 1
