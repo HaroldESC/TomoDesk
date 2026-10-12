@@ -4,7 +4,7 @@ import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QPoint, QTimer, Signal, QPropertyAnimation, QEasingCurve, QRect
-from PySide6.QtGui import QPainter, QPaintEvent, QGuiApplication, QCursor, QWheelEvent
+from PySide6.QtGui import QPainter, QPaintEvent, QGuiApplication, QCursor, QPixmap, QWheelEvent
 from PySide6.QtWidgets import QWidget, QApplication, QMenu
 
 from src.config.config import get_config_path
@@ -71,11 +71,16 @@ class OverlayWindow(QWidget):
             Qt.FramelessWindowHint |
             Qt.WindowStaysOnTopHint |
             Qt.Tool |
-            Qt.NoDropShadowWindowHint
+            Qt.NoDropShadowWindowHint |
+            # B6.1: el overlay nunca debe robar el foco a la aplicación en la
+            # que está escribiendo el usuario (ya declara NoFocus abajo).
+            Qt.WindowDoesNotAcceptFocus
         )
 
         self.setAttribute(Qt.WA_TranslucentBackground)
         self.setAttribute(Qt.WA_NoSystemBackground, True)
+        # Aparecer no activa la ventana ni saca el foco de la app activa.
+        self.setAttribute(Qt.WA_ShowWithoutActivating, True)
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.NoFocus)
 
@@ -253,17 +258,44 @@ class OverlayWindow(QWidget):
             self.move(new_x, new_y)
             logger.info(f"Moved overlay to visible area: ({new_x}, {new_y})")
 
+    def _sprite_rect(self, pixmap: QPixmap | None = None) -> QRect:
+        """Rectángulo (coordenadas locales) donde está dibujado el sprite.
+
+        Es la única fórmula de la posición del personaje: la usan
+        ``paintEvent`` para dibujar y los manejadores de ratón para saber si
+        el cursor cae sobre el personaje o sobre una zona transparente del
+        overlay (que debe dejar pasar el evento).
+
+        :param pixmap: pixmap ya obtenido, para no volver a pedírselo al
+            ``SpriteManager`` y evitar que cambie entre ambas consultas.
+        :return: rectángulo centrado del pixmap. Si no hay sprite cargado
+            devuelve ``self.rect()`` completo: con un rectángulo vacío el
+            overlay dejaría de poder arrastrarse.
+        """
+        if pixmap is None:
+            manager = getattr(self, "sprite_manager", None)
+            pixmap = manager.get_current_pixmap() if manager is not None else None
+        if pixmap is None or pixmap.isNull():
+            return self.rect()
+
+        rect = self.rect()
+        pix_rect = pixmap.rect()
+        x = (rect.width() - pix_rect.width()) // 2
+        y = (rect.height() - pix_rect.height()) // 2
+        return QRect(x, y, pix_rect.width(), pix_rect.height())
+
+    def _is_in_sprite(self, pos: QPoint) -> bool:
+        """True si ``pos`` (coordenadas locales) cae sobre el sprite."""
+        return self._sprite_rect().contains(pos)
+
     def paintEvent(self, event: QPaintEvent):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
         pixmap = self.sprite_manager.get_current_pixmap()
         if not pixmap.isNull():
-            rect = self.rect()
-            pix_rect = pixmap.rect()
-            x = (rect.width() - pix_rect.width()) // 2
-            y = (rect.height() - pix_rect.height()) // 2
-            painter.drawPixmap(x, y, pixmap)
+            sprite_rect = self._sprite_rect(pixmap)
+            painter.drawPixmap(sprite_rect.x(), sprite_rect.y(), pixmap)
 
     def _update_bubble_position(self):
         bubble = getattr(self, 'bubble', None)
@@ -487,6 +519,11 @@ class OverlayWindow(QWidget):
         event.ignore()
 
     def mousePressEvent(self, event):
+        # B8: fuera del sprite el overlay es transparente; el clic debe
+        # atravesar la ventana y llegar a lo que haya debajo.
+        if not self._is_in_sprite(event.position().toPoint()):
+            event.ignore()
+            return
         self._reset_sleep_timer()
         if event.button() == Qt.LeftButton:
             self.dragging = True
@@ -501,12 +538,19 @@ class OverlayWindow(QWidget):
             super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
+        # ``self.dragging`` solo se activa con una pulsación que empezó dentro
+        # del sprite: es ese flag guardado (no una comprobación en cada
+        # movimiento) el que permite que el arrastre siga funcionando aunque
+        # el cursor salga de la caja.
         if self.dragging:
             new_pos = event.globalPosition().toPoint() - self.drag_position
             self.move(new_pos)
             event.accept()
-        else:
-            super().mouseMoveEvent(event)
+            return
+        if not self._is_in_sprite(event.position().toPoint()):
+            event.ignore()
+            return
+        super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton and self.dragging:
@@ -521,10 +565,19 @@ class OverlayWindow(QWidget):
                     self._show_last_message_in_bubble()
                     self._double_click_hint_timer.start(4000)
             event.accept()
-        else:
-            super().mouseReleaseEvent(event)
+            return
+        # Suelta sin arrastre en curso: fuera del sprite el evento atraviesa.
+        if not self._is_in_sprite(event.position().toPoint()):
+            event.ignore()
+            return
+        super().mouseReleaseEvent(event)
 
     def wheelEvent(self, event: QWheelEvent):
+        # El zoom es cosa del personaje: fuera del sprite la rueda atraviesa
+        # el overlay en vez de cambiar el tamaño por accidente.
+        if not self._is_in_sprite(event.position().toPoint()):
+            event.ignore()
+            return
         delta = event.angleDelta().y()
         if delta == 0:
             return
@@ -551,6 +604,9 @@ class OverlayWindow(QWidget):
             logger.warning(f"Failed to save zoom config: {e}")
 
     def mouseDoubleClickEvent(self, event):
+        if not self._is_in_sprite(event.position().toPoint()):
+            event.ignore()
+            return
         if event.button() == Qt.LeftButton:
             self._double_click_hint_timer.stop()
             self.hint_manager.mark_hint_shown(HintManager.HINT_DOUBLE_CLICK)

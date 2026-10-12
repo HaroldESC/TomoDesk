@@ -12,7 +12,7 @@ gestor de idiomas o si la clave no existe en ningun locale.
 import logging
 
 from PySide6.QtWidgets import (
-    QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout,
+    QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget,
 )
 
 from src.gui.utils import force_taskbar_entry
@@ -56,17 +56,20 @@ class PrivacyConsentDialog(QDialog):
         layout.addWidget(body)
 
         buttons = QHBoxLayout()
-        accept_btn = QPushButton(self._t("privacy.accept", _FALLBACK_ACCEPT))
+        self.accept_btn = QPushButton(self._t("privacy.accept", _FALLBACK_ACCEPT))
         # Primario: sin objectName (Design.md §2.1).
-        accept_btn.clicked.connect(self._on_accept)
-        buttons.addWidget(accept_btn)
+        self.accept_btn.clicked.connect(self._on_accept)
+        buttons.addWidget(self.accept_btn)
 
-        decline_btn = QPushButton(self._t("privacy.decline", _FALLBACK_DECLINE))
-        decline_btn.setObjectName("secondary")
-        decline_btn.clicked.connect(self._on_decline)
-        buttons.addWidget(decline_btn)
+        self.decline_btn = QPushButton(self._t("privacy.decline", _FALLBACK_DECLINE))
+        self.decline_btn.setObjectName("secondary")
+        self.decline_btn.clicked.connect(self._on_decline)
+        buttons.addWidget(self.decline_btn)
 
         layout.addLayout(buttons)
+
+        # La decisión se recorre en el orden visual: aceptar y luego declinar.
+        QWidget.setTabOrder(self.accept_btn, self.decline_btn)
         force_taskbar_entry(self)
 
     def _t(self, key: str, fallback: str) -> str:

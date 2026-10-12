@@ -12,8 +12,8 @@ pytestmark = [
     pytest.mark.usefixtures("qapp"),
 ]
 
-from PySide6.QtCore import Qt, QPoint
-from PySide6.QtGui import QMouseEvent
+from PySide6.QtCore import Qt, QPoint, QPointF, QRect, QEvent
+from PySide6.QtGui import QMouseEvent, QPixmap, QWheelEvent
 from PySide6.QtWidgets import QApplication
 
 from src.gui.windows.overlay_window import OverlayWindow, _POSITION_MARGIN
@@ -317,4 +317,220 @@ class TestDefaultOverlayPosition:
         )
 
         assert overlay.pos() == saved
+        overlay.close()
+
+
+# ── B8: la zona transparente del overlay no captura el ratón ─────────────────
+
+SPRITE_W = 60
+SPRITE_H = 40
+# Punto dentro del widget (150x150) pero fuera del sprite centrado (60x40).
+_OUTSIDE_SPRITE = QPoint(5, 5)
+
+
+def _stub_sprite_pixmap(overlay, width: int = SPRITE_W, height: int = SPRITE_H) -> None:
+    """Sustituye el pixmap del sprite para poder probar figuras no cuadradas.
+
+    Con ``width`` y ``height`` a 0 se obtiene un ``QPixmap`` nulo, que es lo
+    que ocurre cuando el sprite no llega a cargarse.
+    """
+    pixmap = QPixmap(width, height)
+    if not pixmap.isNull():
+        pixmap.fill(Qt.transparent)
+    overlay.sprite_manager.get_current_pixmap = lambda: pixmap
+
+
+def _mouse_event(overlay, kind, pos, button=Qt.LeftButton, buttons=None) -> QMouseEvent:
+    """Evento de ratón con posición global coherente con el widget."""
+    if buttons is None:
+        buttons = button
+    return QMouseEvent(
+        kind, QPointF(pos), QPointF(overlay.mapToGlobal(pos)),
+        button, buttons, Qt.NoModifier,
+    )
+
+
+def _overlay_wheel_event(pos, angle_y: int = 120) -> QWheelEvent:
+    """Evento de rueda vertical en coordenadas locales del overlay."""
+    return QWheelEvent(
+        QPointF(pos), QPointF(pos), QPoint(0, 0), QPoint(0, angle_y),
+        Qt.NoButton, Qt.NoModifier, Qt.NoScrollPhase, False,
+    )
+
+
+class TestSpriteHitArea:
+    """Solo el rectángulo del sprite captura clics, arrastres y zoom."""
+
+    def _overlay(self, stub_memory, i18n) -> OverlayWindow:
+        overlay = OverlayWindow(stub_memory, i18n, _overlay_config())
+        _stub_sprite_pixmap(overlay)
+        return overlay
+
+    def test_sprite_rect_is_centered_on_the_pixmap(self, stub_memory, i18n):
+        overlay = self._overlay(stub_memory, i18n)
+
+        bounds = overlay._sprite_rect()
+
+        assert bounds == QRect(
+            (overlay.width() - SPRITE_W) // 2,
+            (overlay.height() - SPRITE_H) // 2,
+            SPRITE_W, SPRITE_H,
+        )
+        assert overlay.rect().contains(bounds)
+        assert not bounds.contains(_OUTSIDE_SPRITE)
+        overlay.close()
+
+    def test_sprite_rect_falls_back_to_the_whole_widget(self, stub_memory, i18n):
+        """Sin sprite cargado el overlay debe seguir pudiéndose arrastrar."""
+        overlay = OverlayWindow(stub_memory, i18n, _overlay_config())
+        _stub_sprite_pixmap(overlay, 0, 0)
+
+        assert overlay._sprite_rect() == overlay.rect()
+        overlay.close()
+
+    def test_press_outside_the_sprite_is_ignored(self, stub_memory, i18n):
+        overlay = self._overlay(stub_memory, i18n)
+        before = overlay.pos()
+
+        event = _mouse_event(overlay, QEvent.Type.MouseButtonPress, _OUTSIDE_SPRITE)
+        overlay.mousePressEvent(event)
+
+        assert event.isAccepted() is False
+        assert overlay.dragging is False
+        assert overlay.pos() == before
+        overlay.close()
+
+    def test_press_inside_the_sprite_drags_and_saves(self, stub_memory, i18n):
+        overlay = self._overlay(stub_memory, i18n)
+        start = overlay.pos()
+        press_pos = overlay._sprite_rect().center()
+
+        press = _mouse_event(overlay, QEvent.Type.MouseButtonPress, press_pos)
+        overlay.mousePressEvent(press)
+        assert press.isAccepted() is True
+        assert overlay.dragging is True
+
+        move = _mouse_event(overlay, QEvent.Type.MouseMove, press_pos + QPoint(40, 30),
+                            button=Qt.NoButton, buttons=Qt.LeftButton)
+        overlay.mouseMoveEvent(move)
+        assert move.isAccepted() is True
+        assert overlay.pos() == start + QPoint(40, 30)
+
+        release = _mouse_event(overlay, QEvent.Type.MouseButtonRelease,
+                               press_pos + QPoint(40, 30))
+        overlay.mouseReleaseEvent(release)
+        assert release.isAccepted() is True
+        assert overlay.dragging is False
+
+        saved = json.loads(stub_memory.set_preference.call_args[0][1])
+        assert saved == {"x": start.x() + 40, "y": start.y() + 30}
+        overlay.close()
+
+    def test_drag_started_inside_keeps_working_outside(self, stub_memory, i18n):
+        overlay = self._overlay(stub_memory, i18n)
+        start = overlay.pos()
+        press_pos = overlay._sprite_rect().center()
+        assert overlay.rect().contains(_OUTSIDE_SPRITE)
+        assert not overlay._sprite_rect().contains(_OUTSIDE_SPRITE)
+
+        overlay.mousePressEvent(
+            _mouse_event(overlay, QEvent.Type.MouseButtonPress, press_pos))
+
+        move = _mouse_event(overlay, QEvent.Type.MouseMove, _OUTSIDE_SPRITE,
+                            button=Qt.NoButton, buttons=Qt.LeftButton)
+        overlay.mouseMoveEvent(move)
+
+        assert move.isAccepted() is True
+        assert overlay.pos() == start + (_OUTSIDE_SPRITE - press_pos)
+
+        release = _mouse_event(overlay, QEvent.Type.MouseButtonRelease, _OUTSIDE_SPRITE)
+        overlay.mouseReleaseEvent(release)
+        assert release.isAccepted() is True
+        assert overlay.dragging is False
+        overlay.close()
+
+    def test_move_outside_the_sprite_is_ignored(self, stub_memory, i18n):
+        overlay = self._overlay(stub_memory, i18n)
+
+        move = _mouse_event(overlay, QEvent.Type.MouseMove, _OUTSIDE_SPRITE,
+                            button=Qt.NoButton, buttons=Qt.NoButton)
+        overlay.mouseMoveEvent(move)
+
+        assert move.isAccepted() is False
+        overlay.close()
+
+    def test_release_outside_the_sprite_is_ignored(self, stub_memory, i18n):
+        overlay = self._overlay(stub_memory, i18n)
+
+        release = _mouse_event(overlay, QEvent.Type.MouseButtonRelease, _OUTSIDE_SPRITE)
+        overlay.mouseReleaseEvent(release)
+
+        assert release.isAccepted() is False
+        stub_memory.set_preference.assert_not_called()
+        overlay.close()
+
+    def test_double_click_outside_the_sprite_is_ignored(self, stub_memory, i18n):
+        overlay = self._overlay(stub_memory, i18n)
+        emitted = []
+        overlay.double_clicked.connect(lambda: emitted.append(True))
+
+        event = _mouse_event(overlay, QEvent.Type.MouseButtonDblClick, _OUTSIDE_SPRITE)
+        overlay.mouseDoubleClickEvent(event)
+
+        assert event.isAccepted() is False
+        assert emitted == []
+        overlay.close()
+
+    def test_double_click_inside_the_sprite_emits(self, stub_memory, i18n):
+        overlay = self._overlay(stub_memory, i18n)
+        emitted = []
+        overlay.double_clicked.connect(lambda: emitted.append(True))
+
+        event = _mouse_event(overlay, QEvent.Type.MouseButtonDblClick,
+                             overlay._sprite_rect().center())
+        overlay.mouseDoubleClickEvent(event)
+
+        assert event.isAccepted() is True
+        assert emitted == [True]
+        overlay.close()
+
+    def test_wheel_outside_the_sprite_does_not_zoom(self, stub_memory, i18n,
+                                                   monkeypatch):
+        # El guardado del zoom escribe el config real: se anula en el test.
+        monkeypatch.setattr(OverlayWindow, "_save_zoom_config", lambda self: None)
+        overlay = self._overlay(stub_memory, i18n)
+        before = overlay.character_size
+
+        event = _overlay_wheel_event(_OUTSIDE_SPRITE)
+        overlay.wheelEvent(event)
+
+        assert event.isAccepted() is False
+        assert overlay.character_size == before
+        assert overlay.width() == before
+        overlay.close()
+
+    def test_wheel_inside_the_sprite_zooms(self, stub_memory, i18n, monkeypatch):
+        monkeypatch.setattr(OverlayWindow, "_save_zoom_config", lambda self: None)
+        overlay = self._overlay(stub_memory, i18n)
+        before = overlay.character_size
+
+        event = _overlay_wheel_event(overlay._sprite_rect().center())
+        overlay.wheelEvent(event)
+
+        assert event.isAccepted() is True
+        assert overlay.character_size > before
+        assert overlay.width() == overlay.character_size
+        overlay._zoom_save_timer.stop()
+        overlay.close()
+
+
+class TestOverlayDoesNotStealFocus:
+    """B6.1: mostrar el overlay no puede activarlo ni robar el foco."""
+
+    def test_shows_without_activating_and_does_not_accept_focus(self, stub_memory, i18n):
+        overlay = OverlayWindow(stub_memory, i18n, _overlay_config())
+
+        assert overlay.testAttribute(Qt.WA_ShowWithoutActivating)
+        assert overlay.windowFlags() & Qt.WindowDoesNotAcceptFocus
+        assert overlay.focusPolicy() == Qt.NoFocus
         overlay.close()

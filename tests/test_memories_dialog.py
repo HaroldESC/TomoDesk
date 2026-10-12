@@ -8,7 +8,8 @@ import datetime
 
 import pytest
 from PySide6.QtCore import QLocale, Qt
-from PySide6.QtWidgets import QMessageBox, QPushButton
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QMessageBox, QPushButton
 
 
 @pytest.fixture(autouse=True)
@@ -104,6 +105,17 @@ def make_dialog(qtbot, mock_memory_manager, mock_i18n):
 
 def _buttons(dialog):
     return {b.text(): b.objectName() for b in dialog.findChildren(QPushButton)}
+
+
+def _tab_sequence(dialog, steps):
+    """Widgets que reciben el foco al pulsar Tab ``steps`` veces seguidas."""
+    qapp = QApplication.instance()
+    widgets = [dialog.focusWidget()]
+    for _ in range(steps):
+        QTest.keyClick(widgets[-1], Qt.Key.Key_Tab)
+        qapp.processEvents()
+        widgets.append(dialog.focusWidget())
+    return widgets
 
 
 class TestButtonHierarchy:
@@ -358,3 +370,40 @@ def _memory_item_kwargs(dialog) -> dict:
         if call.args and call.args[0] == "commands.memory_item":
             return call.kwargs
     raise AssertionError("no se pidio ninguna etiqueta commands.memory_item")
+
+
+class TestTabOrder:
+    """Ola 3 B6.2: el recorrido de Tab sigue el orden documentado."""
+
+    def test_tab_visits_widgets_in_order(self, make_dialog, qapp):
+        dialog = make_dialog([_memory()])
+        dialog.show()
+        qapp.processEvents()
+        dialog.memory_list.setFocus()
+        qapp.processEvents()
+
+        assert _tab_sequence(dialog, 3) == [
+            dialog.memory_list,
+            dialog.detail_view,
+            dialog.delete_btn,
+            dialog.refresh_btn,
+        ]
+
+
+class TestAccessibility:
+    """Ola 3 B6.3: nombres accesibles en listas, vistas y botón ambiguo."""
+
+    def test_list_exposes_an_accessible_name(self, dialog):
+        assert (
+            dialog.memory_list.accessibleName()
+            == "dialogs.memories.saved_memories"
+        )
+
+    def test_detail_view_exposes_an_accessible_name(self, dialog):
+        assert dialog.detail_view.accessibleName() == "dialogs.memories.title"
+
+    def test_delete_button_explains_itself(self, dialog):
+        assert (
+            dialog.delete_btn.accessibleDescription()
+            == "dialogs.memories.delete"
+        )

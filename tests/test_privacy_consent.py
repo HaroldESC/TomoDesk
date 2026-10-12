@@ -1,6 +1,10 @@
 from unittest.mock import MagicMock, patch
 
-from PySide6.QtWidgets import QDialog, QLabel, QPushButton, QWidget
+from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import (
+    QApplication, QDialog, QLabel, QPushButton, QWidget,
+)
 
 from src.gui.windows.privacy_consent import (
     _FALLBACK_ACCEPT, _FALLBACK_DECLINE, PrivacyConsentDialog,
@@ -10,6 +14,17 @@ from src.gui.windows.privacy_consent import (
 def _button_by_text(dialog, text: str) -> QPushButton:
     """Botón del diálogo cuya etiqueta visible es ``text``."""
     return next(b for b in dialog.findChildren(QPushButton) if b.text() == text)
+
+
+def _tab_sequence(dialog, steps):
+    """Widgets que reciben el foco al pulsar Tab ``steps`` veces seguidas."""
+    qapp = QApplication.instance()
+    widgets = [dialog.focusWidget()]
+    for _ in range(steps):
+        QTest.keyClick(widgets[-1], Qt.Key.Key_Tab)
+        qapp.processEvents()
+        widgets.append(dialog.focusWidget())
+    return widgets
 
 
 def test_dialog_is_qdialog(qapp, mock_i18n):
@@ -174,5 +189,24 @@ class TestCentering:
             dialog.show()
             qapp.processEvents()
             assert dialog.isVisible()
+        finally:
+            dialog.close()
+
+
+class TestTabOrder:
+    """Ola 3 B6.2: la decisión se recorre aceptar y luego declinar."""
+
+    def test_tab_visits_buttons_in_order(self, qapp, mock_i18n):
+        dialog = PrivacyConsentDialog(i18n=mock_i18n)
+        dialog.show()
+        qapp.processEvents()
+        dialog.accept_btn.setFocus()
+        qapp.processEvents()
+        try:
+            assert _tab_sequence(dialog, 2) == [
+                dialog.accept_btn,
+                dialog.decline_btn,
+                dialog.accept_btn,
+            ]
         finally:
             dialog.close()

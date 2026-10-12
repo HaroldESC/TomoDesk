@@ -3,7 +3,7 @@ import datetime
 from PySide6.QtCore import QSignalBlocker, Qt
 from PySide6.QtWidgets import (
     QDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget,
-    QListWidgetItem, QPushButton, QSpinBox, QVBoxLayout,
+    QListWidgetItem, QPushButton, QSpinBox, QVBoxLayout, QWidget,
 )
 
 from src.gui.utils import confirm, force_taskbar_entry
@@ -42,8 +42,13 @@ class RemindersDialog(QDialog):
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
 
-        layout.addWidget(QLabel(self.i18n.t("dialogs.reminders.active_reminders")))
+        reminders_label = QLabel(self.i18n.t("dialogs.reminders.active_reminders"))
         self.reminder_list = QListWidget()
+        self.reminder_list.setAccessibleName(
+            self.i18n.t("dialogs.reminders.active_reminders")
+        )
+        reminders_label.setBuddy(self.reminder_list)
+        layout.addWidget(reminders_label)
         layout.addWidget(self.reminder_list, stretch=1)
 
         self.empty_label = QLabel(self.i18n.t("dialogs.reminders.empty"))
@@ -52,19 +57,23 @@ class RemindersDialog(QDialog):
         self.empty_label.setVisible(False)
         layout.addWidget(self.empty_label, stretch=1)
 
-        layout.addWidget(QLabel(self.i18n.t("dialogs.reminders.new_reminder")))
+        message_label = QLabel(self.i18n.t("dialogs.reminders.new_reminder"))
         self.message_input = QLineEdit()
         self.message_input.setPlaceholderText(self.i18n.t("dialogs.reminders.message_placeholder"))
         # Escribir el recordatorio y pulsar Enter lo crea: no hace falta ir
         # hasta el botón con el ratón.
         self.message_input.returnPressed.connect(self._add_reminder)
+        message_label.setBuddy(self.message_input)
+        layout.addWidget(message_label)
         layout.addWidget(self.message_input)
 
         time_layout = QHBoxLayout()
-        time_layout.addWidget(QLabel(self.i18n.t("dialogs.reminders.minutes_from_now")))
+        minutes_label = QLabel(self.i18n.t("dialogs.reminders.minutes_from_now"))
         self.minutes_spin = QSpinBox()
         self.minutes_spin.setRange(1, 1440)
         self.minutes_spin.setValue(30)
+        minutes_label.setBuddy(self.minutes_spin)
+        time_layout.addWidget(minutes_label)
         time_layout.addWidget(self.minutes_spin)
         time_layout.addStretch()
         layout.addLayout(time_layout)
@@ -82,6 +91,12 @@ class RemindersDialog(QDialog):
         btn_layout.addWidget(self.cancel_btn)
 
         layout.addLayout(btn_layout)
+
+        # Recorrido de Tab natural: listado -> alta -> botones.
+        QWidget.setTabOrder(self.reminder_list, self.message_input)
+        QWidget.setTabOrder(self.message_input, self.minutes_spin)
+        QWidget.setTabOrder(self.minutes_spin, self.add_btn)
+        QWidget.setTabOrder(self.add_btn, self.cancel_btn)
 
     def _load_reminders(self) -> None:
         """Rellena el listado con los recordatorios que siguen activos."""

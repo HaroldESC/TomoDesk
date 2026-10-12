@@ -243,7 +243,19 @@ class TestMainWindowPositioning:
                 available.x() + (available.width() - window.width()) // 2,
                 available.y() + (available.height() - window.height()) // 2,
             )
-            assert window.pos() == expected
+            # El centrado se calcula con el area de cliente, pero ``pos()``
+            # devuelve la esquina del marco. En plataformas con borde
+            # (``offscreen`` añade 4 px) esas dos medidas no coinciden al
+            # pixel: se tolera justo la diferencia real entre marco y cliente
+            # mas 1 px por el redondeo entero de ``// 2``. La asercion sigue
+            # siendo significativa: un centrado sobre ``geometry()`` (barra de
+            # tareas incluida) desviaria la ventana decenas de pixeles.
+            tolerance = 1 + max(
+                window.frameGeometry().width() - window.width(),
+                window.frameGeometry().height() - window.height(),
+            )
+            assert abs(window.pos().x() - expected.x()) <= tolerance
+            assert abs(window.pos().y() - expected.y()) <= tolerance
         finally:
             window.close()
 
@@ -304,6 +316,178 @@ class TestMainWindowPositioning:
                 window.show()
                 qapp.processEvents()
             assert window.pos() == first
+        finally:
+            window.close()
+
+
+def _prefs_manager(store: dict):
+    """Memory manager de mentira con get/set_preference sobre un dict."""
+    manager = MagicMock()
+    manager.get_preference.side_effect = lambda key: store.get(key)
+    manager.set_preference.side_effect = lambda key, value: store.__setitem__(
+        key, value
+    )
+    return manager
+
+
+class TestMainWindowGeometryPersistence:
+    """B6.3: tamano y posicion de la ventana principal se recuerdan.
+
+    Antes cada arranque volvia a 1000x700 centrada; ahora la geometria se
+    guarda al ocultar a la bandeja y al salir, y se restaura al construir.
+    """
+
+    def _window(self, config, memory_manager, i18n):
+        from src.gui.windows.main_window import MainWindow
+
+        return MainWindow(
+            config=config, memory_manager=memory_manager, i18n=i18n
+        )
+
+    def _expected_center(self, window):
+        from PySide6.QtCore import QPoint
+        from PySide6.QtGui import QGuiApplication
+
+        area = QGuiApplication.primaryScreen().availableGeometry()
+        return QPoint(
+            area.x() + (area.width() - window.width()) // 2,
+            area.y() + (area.height() - window.height()) // 2,
+        )
+
+    def _center_tolerance(self, window):
+        return 1 + max(
+            window.frameGeometry().width() - window.width(),
+            window.frameGeometry().height() - window.height(),
+        )
+
+    def test_geometry_is_saved_when_hiding_to_the_tray(
+        self, qapp, mock_config, mock_i18n
+    ):
+        store = {}
+        window = self._window(mock_config, _prefs_manager(store), mock_i18n)
+        try:
+            window.show()
+            qapp.processEvents()
+            window.move(120, 80)
+
+            # ``_quit_on_close`` es False: cerrar oculta a la bandeja.
+            window.close()
+
+            assert store.get("window_geometry")
+        finally:
+            window.close()
+
+    def test_geometry_is_saved_on_quit(self, qapp, mock_config, mock_i18n, mocker):
+        from src.gui.windows import main_window as mw
+
+        store = {}
+        window = self._window(mock_config, _prefs_manager(store), mock_i18n)
+        quit_mock = mocker.patch.object(mw.QApplication, "quit")
+        try:
+            window.show()
+            qapp.processEvents()
+            window.move(120, 80)
+
+            window.quit_application()
+
+            assert store.get("window_geometry")
+            quit_mock.assert_called_once()
+        finally:
+            window.close()
+
+    def test_unshown_window_does_not_persist_a_geometry(
+        self, qapp, mock_config, mock_i18n
+    ):
+        """Sin haber sido posicionada no se guarda una geometria absurda."""
+        store = {}
+        window = self._window(mock_config, _prefs_manager(store), mock_i18n)
+        try:
+            window.close()
+            assert "window_geometry" not in store
+        finally:
+            window.close()
+
+    def test_geometry_is_restored_in_a_new_instance(
+        self, qapp, mock_config, mock_i18n
+    ):
+        from PySide6.QtGui import QGuiApplication
+
+        store = {}
+        manager = _prefs_manager(store)
+
+        first = self._window(mock_config, manager, mock_i18n)
+        first.show()
+        qapp.processEvents()
+        first.move(150, 95)
+        saved_size = first.size()
+        first.close()
+
+        second = self._window(mock_config, manager, mock_i18n)
+        try:
+            # Con geometria valida la ventana ya viene posicionada: no se
+            # vuelve a centrar (``showEvent`` respeta lo guardado).
+            assert second._positioned is True
+            second.show()
+            qapp.processEvents()
+
+            # El eje vertical siempre cabe en la pantalla: se restaura exacto.
+            assert second.pos().y() == 95
+            # Y no es la posicion del centrado inicial.
+            assert second.pos() != self._expected_center(second)
+            # Si la ventana cabe a lo ancho (no es el caso en ``offscreen``,
+            # con una pantalla de 800 px y un minimo de 900) la X tambien se
+            # restaura; en caso contrario Qt la ajusta para que quepa.
+            area = QGuiApplication.primaryScreen().availableGeometry()
+            if area.width() >= saved_size.width():
+                assert second.pos().x() == 150
+        finally:
+            first.close()
+            second.close()
+
+    def test_corrupt_geometry_falls_back_to_centering(
+        self, qapp, mock_config, mock_i18n
+    ):
+        store = {"window_geometry": "no-es-base64-valido!"}
+        window = self._window(mock_config, _prefs_manager(store), mock_i18n)
+        try:
+            assert window._positioned is False
+            window.show()
+            qapp.processEvents()
+            expected = self._expected_center(window)
+            tolerance = self._center_tolerance(window)
+            assert abs(window.pos().x() - expected.x()) <= tolerance
+            assert abs(window.pos().y() - expected.y()) <= tolerance
+        finally:
+            window.close()
+
+    def test_empty_geometry_preference_falls_back_to_centering(
+        self, qapp, mock_config, mock_i18n
+    ):
+        store = {"window_geometry": ""}
+        window = self._window(mock_config, _prefs_manager(store), mock_i18n)
+        try:
+            assert window._positioned is False
+            window.show()
+            qapp.processEvents()
+            expected = self._expected_center(window)
+            tolerance = self._center_tolerance(window)
+            assert abs(window.pos().x() - expected.x()) <= tolerance
+            assert abs(window.pos().y() - expected.y()) <= tolerance
+        finally:
+            window.close()
+
+    def test_missing_preference_keeps_centering_the_first_show(
+        self, qapp, mock_config, mock_i18n
+    ):
+        window = self._window(mock_config, _prefs_manager({}), mock_i18n)
+        try:
+            assert window._positioned is False
+            window.show()
+            qapp.processEvents()
+            expected = self._expected_center(window)
+            tolerance = self._center_tolerance(window)
+            assert abs(window.pos().x() - expected.x()) <= tolerance
+            assert abs(window.pos().y() - expected.y()) <= tolerance
         finally:
             window.close()
 

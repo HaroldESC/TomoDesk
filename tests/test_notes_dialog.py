@@ -5,7 +5,11 @@ editor sin tope de altura, cambios sin guardar y confirmaciones.
 """
 
 import pytest
-from PySide6.QtWidgets import QMessageBox, QPushButton, QScrollArea
+from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import (
+    QApplication, QLabel, QMessageBox, QPushButton, QScrollArea,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -104,6 +108,24 @@ def two_notes(make_dialog):
 
 def _buttons(dialog):
     return {b.text(): b.objectName() for b in dialog.findChildren(QPushButton)}
+
+
+def _label_with_text(dialog, text):
+    """``QLabel`` del diálogo cuyo texto coincide (mock_i18n devuelve la clave)."""
+    return next(
+        label for label in dialog.findChildren(QLabel) if label.text() == text
+    )
+
+
+def _tab_sequence(dialog, steps):
+    """Widgets que reciben el foco al pulsar Tab ``steps`` veces seguidas."""
+    qapp = QApplication.instance()
+    widgets = [dialog.focusWidget()]
+    for _ in range(steps):
+        QTest.keyClick(widgets[-1], Qt.Key.Key_Tab)
+        qapp.processEvents()
+        widgets.append(dialog.focusWidget())
+    return widgets
 
 
 class TestButtonHierarchy:
@@ -438,47 +460,32 @@ class TestDeleteConfirmation:
         assert boxes[0].windowTitle() == "dialogs.notes.delete_confirm_title"
         assert boxes[0].text() == "dialogs.notes.delete_confirm_body"
 
-    def test_dirty_note_asks_about_changes_and_then_about_deleting(
-        self, two_notes, mock_memory_manager, monkeypatch
+    def test_dirty_note_asks_only_once_and_deletes(
+        self, two_notes, mock_memory_manager, answer
     ):
-        """Primero los cambios sin guardar; aceptado eso, luego el borrado."""
-        self._answer_sequence(monkeypatch, [True, False])
+        """Con cambios sin guardar sigue bastando una sola pregunta (borrado)."""
+        boxes = answer(True)
         two_notes.note_list.setCurrentRow(0)
         two_notes.title_input.setText("editado")
 
         two_notes._delete_note()
 
-        mock_memory_manager.delete_note.assert_not_called()
-        assert two_notes.title_input.text() == "editado"
-
-    def test_dirty_note_is_deleted_when_both_prompts_are_confirmed(
-        self, two_notes, mock_memory_manager, monkeypatch
-    ):
-        self._answer_sequence(monkeypatch, [True, True])
-        two_notes.note_list.setCurrentRow(0)
-        two_notes.title_input.setText("editado")
-
-        two_notes._delete_note()
-
+        assert len(boxes) == 1
+        assert boxes[0].windowTitle() == "dialogs.notes.delete_confirm_title"
         mock_memory_manager.delete_note.assert_called_once_with(2)
 
-    def _answer_sequence(self, monkeypatch, answers):
-        """Responde a varios diálogos seguidos con ``answers`` (True = aceptar)."""
-        pending = iter(answers)
+    def test_dirty_note_cancelling_the_single_prompt_keeps_it(
+        self, two_notes, mock_memory_manager, answer
+    ):
+        boxes = answer(False)
+        two_notes.note_list.setCurrentRow(0)
+        two_notes.title_input.setText("editado")
 
-        def fake_exec(self):
-            return 0
+        two_notes._delete_note()
 
-        def clicked(self):
-            key = (
-                "dialogs.confirm.accept"
-                if next(pending)
-                else "dialogs.confirm.cancel"
-            )
-            return _button_with_text(self, key)
-
-        monkeypatch.setattr(QMessageBox, "exec", fake_exec)
-        monkeypatch.setattr(QMessageBox, "clickedButton", clicked)
+        assert len(boxes) == 1
+        mock_memory_manager.delete_note.assert_not_called()
+        assert two_notes.title_input.text() == "editado"
 
     def test_without_selection_nothing_happens(
         self, two_notes, mock_memory_manager, answer
@@ -515,3 +522,45 @@ class TestEmptyList:
 
         assert dialog.empty_label.isVisibleTo(dialog) is False
         assert dialog.note_list.isVisibleTo(dialog) is True
+
+
+class TestTabOrder:
+    """Ola 3 B6.2: el recorrido de Tab sigue el orden documentado."""
+
+    def test_tab_visits_widgets_in_order(self, two_notes, qapp):
+        two_notes.show()
+        qapp.processEvents()
+        two_notes.note_list.setFocus()
+        qapp.processEvents()
+
+        assert _tab_sequence(two_notes, 5) == [
+            two_notes.note_list,
+            two_notes.title_input,
+            two_notes.content_input,
+            two_notes.save_btn,
+            two_notes.delete_btn,
+            two_notes.new_btn,
+        ]
+
+
+class TestAccessibility:
+    """Ola 3 B6.3: etiquetas clicables y nombres accesibles."""
+
+    def test_note_list_label_points_at_the_list(self, dialog):
+        label = _label_with_text(dialog, "dialogs.notes.your_notes")
+        assert label.buddy() is dialog.note_list
+
+    def test_title_label_points_at_the_title_field(self, dialog):
+        label = _label_with_text(dialog, "dialogs.notes.title_label")
+        assert label.buddy() is dialog.title_input
+
+    def test_content_label_points_at_the_editor(self, dialog):
+        label = _label_with_text(dialog, "dialogs.notes.content_label")
+        assert label.buddy() is dialog.content_input
+
+    def test_list_and_editor_expose_accessible_names(self, dialog):
+        assert dialog.note_list.accessibleName() == "dialogs.notes.your_notes"
+        assert (
+            dialog.content_input.accessibleName()
+            == "dialogs.notes.content_label"
+        )

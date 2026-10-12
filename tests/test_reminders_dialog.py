@@ -4,7 +4,9 @@ Cubre la jerarquía de botones (Design.md §2.1) y la Ola 1 de la Fase 3.
 """
 
 import pytest
-from PySide6.QtWidgets import QMessageBox, QPushButton
+from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QPushButton
 
 
 @pytest.fixture(autouse=True)
@@ -96,6 +98,24 @@ def make_dialog(qtbot, mock_memory_manager, mock_i18n):
 
 def _buttons(dialog):
     return {b.text(): b.objectName() for b in dialog.findChildren(QPushButton)}
+
+
+def _label_with_text(dialog, text):
+    """``QLabel`` del diálogo cuyo texto coincide (mock_i18n devuelve la clave)."""
+    return next(
+        label for label in dialog.findChildren(QLabel) if label.text() == text
+    )
+
+
+def _tab_sequence(dialog, steps):
+    """Widgets que reciben el foco al pulsar Tab ``steps`` veces seguidas."""
+    qapp = QApplication.instance()
+    widgets = [dialog.focusWidget()]
+    for _ in range(steps):
+        QTest.keyClick(widgets[-1], Qt.Key.Key_Tab)
+        qapp.processEvents()
+        widgets.append(dialog.focusWidget())
+    return widgets
 
 
 class TestButtonHierarchy:
@@ -265,3 +285,44 @@ def _reminder_item_kwargs(dialog) -> dict:
         if call.args and call.args[0] == "commands.reminder_item":
             return call.kwargs
     raise AssertionError("no se pidio ninguna etiqueta commands.reminder_item")
+
+
+class TestTabOrder:
+    """Ola 3 B6.2: el recorrido de Tab sigue el orden documentado."""
+
+    def test_tab_visits_widgets_in_order(self, make_dialog, qapp):
+        dialog = make_dialog([_reminder()])
+        dialog.show()
+        qapp.processEvents()
+        dialog.reminder_list.setFocus()
+        qapp.processEvents()
+
+        assert _tab_sequence(dialog, 4) == [
+            dialog.reminder_list,
+            dialog.message_input,
+            dialog.minutes_spin,
+            dialog.add_btn,
+            dialog.cancel_btn,
+        ]
+
+
+class TestAccessibility:
+    """Ola 3 B6.3: etiquetas clicables y nombres accesibles."""
+
+    def test_active_reminders_label_points_at_the_list(self, dialog):
+        label = _label_with_text(dialog, "dialogs.reminders.active_reminders")
+        assert label.buddy() is dialog.reminder_list
+
+    def test_new_reminder_label_points_at_the_input(self, dialog):
+        label = _label_with_text(dialog, "dialogs.reminders.new_reminder")
+        assert label.buddy() is dialog.message_input
+
+    def test_minutes_label_points_at_the_spinbox(self, dialog):
+        label = _label_with_text(dialog, "dialogs.reminders.minutes_from_now")
+        assert label.buddy() is dialog.minutes_spin
+
+    def test_list_exposes_an_accessible_name(self, dialog):
+        assert (
+            dialog.reminder_list.accessibleName()
+            == "dialogs.reminders.active_reminders"
+        )

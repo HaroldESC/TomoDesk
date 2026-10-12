@@ -90,6 +90,9 @@ class MemoriesDialog(QDialog):
         list_layout.setContentsMargins(0, 0, 0, 0)
         self.memory_list = QListWidget()
         self.memory_list.setMinimumWidth(260)
+        self.memory_list.setAccessibleName(
+            self.i18n.t("dialogs.memories.saved_memories")
+        )
         self.memory_list.currentItemChanged.connect(self._on_current_changed)
         list_layout.addWidget(self.memory_list, stretch=1)
 
@@ -104,6 +107,10 @@ class MemoriesDialog(QDialog):
         self.detail_view = QTextEdit()
         self.detail_view.setReadOnly(True)
         self.detail_view.setFrameShape(QFrame.Shape.NoFrame)
+        # El panel de lectura no debe tragarse el Tab: el recorrido de teclado
+        # tiene que poder salir de la vista hacia los botones.
+        self.detail_view.setTabChangesFocus(True)
+        self.detail_view.setAccessibleName(self.i18n.t("dialogs.memories.title"))
         self.splitter.addWidget(self.detail_view)
 
         self.splitter.setStretchFactor(0, 1)
@@ -116,6 +123,9 @@ class MemoriesDialog(QDialog):
 
         self.delete_btn = QPushButton(self.i18n.t("dialogs.memories.delete"))
         self.delete_btn.setObjectName("danger")
+        self.delete_btn.setAccessibleDescription(
+            self.i18n.t("dialogs.memories.delete")
+        )
         self.delete_btn.clicked.connect(self._delete_memory)
         btn_layout.addWidget(self.delete_btn)
 
@@ -125,6 +135,11 @@ class MemoriesDialog(QDialog):
         btn_layout.addWidget(self.refresh_btn)
 
         layout.addLayout(btn_layout)
+
+        # Recorrido de Tab natural: listado -> detalle -> botones.
+        QWidget.setTabOrder(self.memory_list, self.detail_view)
+        QWidget.setTabOrder(self.detail_view, self.delete_btn)
+        QWidget.setTabOrder(self.delete_btn, self.refresh_btn)
 
     def _load_memories(self) -> None:
         """Rellena el listado desde la base de datos y refresca el detalle."""

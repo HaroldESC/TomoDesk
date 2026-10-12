@@ -1,9 +1,10 @@
+import base64
 import datetime
 import logging
 import os
 import threading
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QByteArray, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QFontMetrics
 from PySide6.QtWidgets import (
     QApplication, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
@@ -21,6 +22,9 @@ from src.gui.styles.styles import get_style_set
 from src import __version__
 
 logger = logging.getLogger(__name__)
+
+#: Clave de la preferencia donde se persiste el tamano/posicion de la ventana.
+_WINDOW_GEOMETRY_KEY = "window_geometry"
 
 
 class MainWindow(QMainWindow):
@@ -64,6 +68,7 @@ class MainWindow(QMainWindow):
         # Centrado solo en la primera aparicion: despues manda la posicion
         # que el usuario haya dejado (p.ej. al restaurar desde la bandeja).
         self._positioned = False
+        self._restore_geometry()
 
         theme = config.get("ui", {}).get("theme", "light")
         self._styles = get_style_set(theme)
@@ -561,7 +566,49 @@ class MainWindow(QMainWindow):
             area.y() + (area.height() - self.height()) // 2,
         )
 
+    def _save_geometry(self) -> None:
+        """Persiste posicion y tamano de la ventana como texto (base64).
+
+        ``saveGeometry()`` devuelve un ``QByteArray`` binario: se codifica en
+        base64 para poder guardarlo en la tabla de preferencias, que solo
+        admite texto. Nunca lanza: perder la geometria no debe impedir cerrar
+        la aplicacion.
+        """
+        # Sin centrar todavia (o minimizada) la geometria no representa lo que
+        # el usuario eligio: guardarla impediria el centrado de la primera
+        # aparicion en el proximo arranque.
+        if not self._positioned or self.isMinimized():
+            return
+        try:
+            encoded = base64.b64encode(bytes(self.saveGeometry())).decode("ascii")
+            self.memory_manager.set_preference(_WINDOW_GEOMETRY_KEY, encoded)
+            logger.debug("Saved main window geometry")
+        except Exception:
+            logger.debug("Failed to save main window geometry", exc_info=True)
+
+    def _restore_geometry(self) -> None:
+        """Restaura la geometria guardada, si existe y es valida.
+
+        Solo cuando Qt acepta los datos se marca ``_positioned``, de modo que
+        ``showEvent`` respeta la posicion del usuario en lugar de volver a
+        centrar. Sin preferencia o con datos corruptos se mantiene el centrado
+        de la primera aparicion.
+        """
+        try:
+            stored = self.memory_manager.get_preference(_WINDOW_GEOMETRY_KEY)
+            if not stored:
+                return
+            data = QByteArray(base64.b64decode(stored, validate=True))
+            if self.restoreGeometry(data):
+                self._positioned = True
+                logger.debug("Restored main window geometry")
+            else:
+                logger.debug("Stored main window geometry was rejected by Qt")
+        except Exception:
+            logger.debug("Failed to restore main window geometry", exc_info=True)
+
     def closeEvent(self, event):
+        self._save_geometry()
         if self._quit_on_close:
             logger.info("Main window closing permanently")
             event.accept()
@@ -589,5 +636,6 @@ class MainWindow(QMainWindow):
             self._tray_icon.set_menu_style(styles["overlay_menu"])
 
     def quit_application(self):
+        self._save_geometry()
         self._quit_on_close = True
         QApplication.quit()

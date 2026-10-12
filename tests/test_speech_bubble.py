@@ -426,6 +426,52 @@ def test_set_typewriter_interval_applies_while_typing(qapp):
     bubble.hide_bubble()
 
 
+# ── B6.1: mostrarse no debe robar el foco (pero el input inline sí lo usa) ───
+
+def test_bubble_shows_without_activating(qapp):
+    """Aparecer no puede activar la ventana ni sacar el foco de la app activa."""
+    bubble = SpeechBubble()
+    assert bubble.testAttribute(Qt.WA_ShowWithoutActivating)
+
+
+def test_bubble_does_not_refuse_focus(qapp):
+    """El input inline se escribe: WindowDoesNotAcceptFocus lo rompería."""
+    bubble = SpeechBubble()
+    assert not (bubble.windowFlags() & Qt.WindowDoesNotAcceptFocus)
+
+
+def test_show_inline_input_shows_and_focuses_the_field(qapp):
+    bubble = SpeechBubble()
+    bubble.show_text("Hello", animate=False)
+    bubble.show()
+    QTest.qWait(50)
+
+    bubble.show_inline_input()
+
+    assert bubble.input_edit.isVisible()
+    # La ventana no se activa sola (WA_ShowWithoutActivating), así que se
+    # comprueba también que el campo es el widget de foco: con un gestor de
+    # ventanas que rechace la activación (CI) hasFocus() puede ser False
+    # aunque el teclado irá al campo en cuanto la ventana esté activa.
+    assert bubble.input_edit.hasFocus() or bubble.focusWidget() is bubble.input_edit
+    bubble.hide_bubble()
+
+
+def test_hide_inline_input_hides_the_field(qapp):
+    bubble = SpeechBubble()
+    bubble.show_text("Hello", animate=False)
+    bubble.show()
+    QTest.qWait(50)
+
+    bubble.show_inline_input()
+    assert bubble.input_edit.isVisible()
+
+    bubble.hide_inline_input()
+
+    assert not bubble.input_edit.isVisible()
+    bubble.hide_bubble()
+
+
 @pytest.mark.parametrize("bad", [0, -1, -250])
 def test_set_typewriter_interval_ignores_non_positive(qapp, bad):
     """Un intervalo <= 0 no debe dejar el QTimer disparando en bucle cerrado."""

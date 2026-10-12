@@ -32,11 +32,14 @@ class NotesDialog(QDialog):
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
 
-        layout.addWidget(QLabel(self.i18n.t("dialogs.notes.your_notes")))
+        notes_label = QLabel(self.i18n.t("dialogs.notes.your_notes"))
 
         self.note_list = QListWidget()
         self.note_list.setMinimumHeight(120)
+        self.note_list.setAccessibleName(self.i18n.t("dialogs.notes.your_notes"))
         self.note_list.currentRowChanged.connect(self._on_select)
+        notes_label.setBuddy(self.note_list)
+        layout.addWidget(notes_label)
         layout.addWidget(self.note_list, stretch=1)
 
         self.empty_label = QLabel(self.i18n.t("dialogs.notes.empty"))
@@ -54,13 +57,23 @@ class NotesDialog(QDialog):
         form = QWidget()
         form_layout = QVBoxLayout(form)
 
-        form_layout.addWidget(QLabel(self.i18n.t("dialogs.notes.title_label")))
+        title_label = QLabel(self.i18n.t("dialogs.notes.title_label"))
         self.title_input = QLineEdit()
+        title_label.setBuddy(self.title_input)
+        form_layout.addWidget(title_label)
         form_layout.addWidget(self.title_input)
 
-        form_layout.addWidget(QLabel(self.i18n.t("dialogs.notes.content_label")))
+        content_label = QLabel(self.i18n.t("dialogs.notes.content_label"))
         self.content_input = QTextEdit()
         self.content_input.setMinimumHeight(160)
+        # El editor no debe quedarse con el Tab para sangrar: el recorrido de
+        # teclado tiene que poder salir del campo hacia los botones.
+        self.content_input.setTabChangesFocus(True)
+        self.content_input.setAccessibleName(
+            self.i18n.t("dialogs.notes.content_label")
+        )
+        content_label.setBuddy(self.content_input)
+        form_layout.addWidget(content_label)
         form_layout.addWidget(self.content_input)
 
         self.scroll.setWidget(form)
@@ -86,6 +99,13 @@ class NotesDialog(QDialog):
 
         self.title_input.textChanged.connect(self._mark_dirty)
         self.content_input.textChanged.connect(self._mark_dirty)
+
+        # Recorrido de Tab natural: listado -> editor -> botones.
+        QWidget.setTabOrder(self.note_list, self.title_input)
+        QWidget.setTabOrder(self.title_input, self.content_input)
+        QWidget.setTabOrder(self.content_input, self.save_btn)
+        QWidget.setTabOrder(self.save_btn, self.delete_btn)
+        QWidget.setTabOrder(self.delete_btn, self.new_btn)
 
     def _load_notes(self) -> None:
         """Rellena el listado desde la base de datos y recarga el editor."""
@@ -197,11 +217,14 @@ class NotesDialog(QDialog):
         self._load_notes()
 
     def _delete_note(self) -> None:
-        """Borra la nota seleccionada previa confirmación."""
+        """Borra la nota seleccionada previa confirmación.
+
+        No se pide confirmación por los cambios sin guardar: al borrar la nota
+        esos cambios se descartan de todos modos, así que basta con una sola
+        pregunta (la de borrado).
+        """
         current_row = self.note_list.currentRow()
         if current_row < 0 or current_row >= len(self._notes):
-            return
-        if not self._confirm_discard():
             return
         if not confirm(
             self,

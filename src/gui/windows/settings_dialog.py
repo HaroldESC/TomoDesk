@@ -103,6 +103,35 @@ def _soft_wrap_path(text: str) -> str:
     return text.replace("\\", "\\\u200b").replace("/", "/\u200b")
 
 
+def _search_text(label: str, aliases: tuple[str, ...] = ()) -> str:
+    """Texto buscable de una fila: etiqueta traducida mas alias tecnicos.
+
+    Los alias son terminos neutros respecto al idioma (los mismos en es y en)
+    para que teclear "timeout", "endpoint" o "chroma" encuentre el ajuste
+    aunque la interfaz este en espanol y la etiqueta diga otra cosa.
+    """
+    return " ".join([(label or "").lower(), *(a.lower() for a in aliases)])
+
+
+def _focusable_buddy(widget: QWidget) -> QWidget | None:
+    """Primer control focusable dentro de ``widget`` (o el propio ``widget``).
+
+    Varias filas envuelven un ``QLineEdit`` junto a un boton "Examinar" en un
+    ``QWidget`` contenedor: ese contenedor no recibe el foco, asi que la
+    etiqueta de la fila debe apuntar al control interior para que al pulsarla
+    se enfoque el campo. Si no hay ningun hijo focusable se devuelve ``None``
+    y la etiqueta se queda sin buddy en lugar de fallar.
+    """
+    if widget is None:
+        return None
+    if widget.focusPolicy() != Qt.NoFocus:
+        return widget
+    for child in widget.findChildren(QWidget):
+        if child.focusPolicy() != Qt.NoFocus:
+            return child
+    return None
+
+
 def _group_row_labels(group: QGroupBox) -> str:
     """Etiquetas de fila de un grupo, en minusculas y separadas por espacios.
 
@@ -149,16 +178,21 @@ class SettingsDialog(QDialog):
 
     # ── helpers ──────────────────────────────────────────────────────────────
 
-    def _add_row(self, layout, label, widget):
+    def _add_row(self, layout, label, widget, aliases: tuple[str, ...] = ()):
         row = QHBoxLayout()
         lbl = QLabel(label)
         lbl.setMinimumWidth(130)
         row.addWidget(lbl, 0)
         row.addWidget(widget, 1)
         layout.addLayout(row)
-        # La etiqueta traducida es lo que el usuario ve escrito al lado del
-        # control: el buscador debe encontrarla (p.ej. "timeout" o "api").
-        widget.setProperty("_row_label", (label or "").lower())
+        # Pulsar la etiqueta enfoca su control (accesorios de teclado).
+        buddy = _focusable_buddy(widget)
+        if buddy is not None:
+            lbl.setBuddy(buddy)
+        # La etiqueta traducida mas los alias tecnicos son lo que el buscador
+        # compara: "timeout", "api" o "chroma" encuentran el ajuste aunque la
+        # interfaz este en espanol.
+        widget.setProperty("_row_label", _search_text(label, aliases))
 
     def _add_group(self, layout, title_key, controls_builder):
         group = QGroupBox(self.i18n.t(title_key))
@@ -191,13 +225,17 @@ class SettingsDialog(QDialog):
         row.addWidget(lbl)
         return s, row
 
-    def _labeled_slider(self, layout, label, lo, hi, val, suffix="%"):
+    def _labeled_slider(self, layout, label, lo, hi, val, suffix="%", aliases=()):
         s, row = self._slider_with_label(lo, hi, val, suffix)
-        row.insertWidget(0, QLabel(label))
+        lbl = QLabel(label)
+        row.insertWidget(0, lbl)
         layout.addLayout(row)
+        buddy = _focusable_buddy(s)
+        if buddy is not None:
+            lbl.setBuddy(buddy)
         # Esta fila se construye a mano: se registra igual que en _add_row
         # para que el buscador encuentre tambien los deslizadores.
-        s.setProperty("_row_label", (label or "").lower())
+        s.setProperty("_row_label", _search_text(label, aliases))
         return s
 
     def _scrollable(self, widget, hmargin=75):
@@ -234,7 +272,8 @@ class SettingsDialog(QDialog):
         self.ui_theme.setCurrentIndex(
             max(0, self.ui_theme.findData(ui.get("theme", "light")))
         )
-        self._add_row(layout, self.i18n.t("dialogs.settings.theme"), self.ui_theme)
+        self._add_row(layout, self.i18n.t("dialogs.settings.theme"), self.ui_theme,
+                      aliases=("tema", "light", "dark"))
 
         self.ui_char_size = self._labeled_slider(
             layout, self.i18n.t("dialogs.settings.character_size"),
@@ -444,7 +483,8 @@ class SettingsDialog(QDialog):
         ]
         for key, label_key, default in mood_fields:
             row = QHBoxLayout()
-            row.addWidget(QLabel(self.i18n.t(label_key)))
+            label = QLabel(self.i18n.t(label_key))
+            row.addWidget(label)
             slider = QSlider(Qt.Horizontal)
             slider.setRange(0, 100)
             val = int(pers.get(key, default) * 100)
@@ -454,6 +494,7 @@ class SettingsDialog(QDialog):
             row.addWidget(slider, stretch=1)
             row.addWidget(value_label)
             layout.addLayout(row)
+            label.setBuddy(slider)
             setattr(self, f"pers_{key}", slider)
 
     def _build_character_packs(self, layout):
@@ -704,14 +745,16 @@ class SettingsDialog(QDialog):
         self.llm_endpoint.setToolTip(
             self.i18n.t("dialogs.settings.tip_llm_endpoint")
         )
-        self._add_row(layout, self.i18n.t("dialogs.settings.endpoint"), self.llm_endpoint)
+        self._add_row(layout, self.i18n.t("dialogs.settings.endpoint"), self.llm_endpoint,
+                      aliases=("endpoint", "url", "api"))
 
         self.llm_api_key = QLineEdit(_creds.get_secret("llm_api_key") or "")
         self.llm_api_key.setEchoMode(QLineEdit.EchoMode.Password)
         self.llm_api_key.setToolTip(
             self.i18n.t("dialogs.settings.tip_llm_api_key")
         )
-        self._add_row(layout, self.i18n.t("dialogs.settings.api_key"), self.llm_api_key)
+        self._add_row(layout, self.i18n.t("dialogs.settings.api_key"), self.llm_api_key,
+                      aliases=("api key", "token", "clave"))
 
         self.llm_timeout = QSpinBox()
         self.llm_timeout.setRange(5, 300)
@@ -720,7 +763,8 @@ class SettingsDialog(QDialog):
         self.llm_timeout.setToolTip(
             self.i18n.t("dialogs.settings.tip_llm_timeout")
         )
-        self._add_row(layout, self.i18n.t("dialogs.settings.llm_timeout"), self.llm_timeout)
+        self._add_row(layout, self.i18n.t("dialogs.settings.llm_timeout"), self.llm_timeout,
+                      aliases=("timeout", "segundos"))
 
         self._build_llama_cpp(layout)
 
@@ -739,7 +783,8 @@ class SettingsDialog(QDialog):
         path_row.addWidget(browse_btn)
         path_widget = QWidget()
         path_widget.setLayout(path_row)
-        self._add_row(layout, self.i18n.t("dialogs.settings.model_path"), path_widget)
+        self._add_row(layout, self.i18n.t("dialogs.settings.model_path"), path_widget,
+                      aliases=("gguf", "llama"))
 
         self.llama_ctx = QSpinBox()
         self.llama_ctx.setRange(256, 131072)
@@ -748,7 +793,8 @@ class SettingsDialog(QDialog):
         self.llama_ctx.setToolTip(
             self.i18n.t("dialogs.settings.tip_llama_ctx")
         )
-        self._add_row(layout, self.i18n.t("dialogs.settings.n_ctx"), self.llama_ctx)
+        self._add_row(layout, self.i18n.t("dialogs.settings.n_ctx"), self.llama_ctx,
+                      aliases=("n_ctx", "contexto", "context"))
 
         dl_row = QHBoxLayout()
         self.llama_download_btn = QPushButton(
@@ -948,7 +994,7 @@ class SettingsDialog(QDialog):
             self.i18n.t("dialogs.settings.tip_mem_short_term")
         )
         self._add_row(layout, self.i18n.t("dialogs.settings.max_short_term_messages"),
-                      self.mem_short_term)
+                      self.mem_short_term, aliases=("corto plazo", "short term"))
 
         self.mem_include_notes = QCheckBox(self.i18n.t("dialogs.settings.context_include_notes"))
         self.mem_include_notes.setChecked(mem.get("include_notes", True))
@@ -974,7 +1020,8 @@ class SettingsDialog(QDialog):
         path_row.addWidget(browse_btn)
         path_widget = QWidget()
         path_widget.setLayout(path_row)
-        self._add_row(layout, self.i18n.t("dialogs.settings.chroma_path"), path_widget)
+        self._add_row(layout, self.i18n.t("dialogs.settings.chroma_path"), path_widget,
+                      aliases=("chroma", "vector"))
 
         self.mem_embed_model = QComboBox()
         self.mem_embed_model.setEditable(True)
@@ -993,7 +1040,8 @@ class SettingsDialog(QDialog):
         else:
             self.mem_embed_model.setCurrentText(current)
         self._add_row(layout, self.i18n.t("dialogs.settings.embedding_model"),
-                      self.mem_embed_model)
+                      self.mem_embed_model,
+                      aliases=("embeddings", "embedding", "vector"))
 
         reindex_btn = QPushButton(self.i18n.t("dialogs.settings.memory_reindex"))
         reindex_btn.setObjectName("flat")
@@ -1010,11 +1058,13 @@ class SettingsDialog(QDialog):
             self.i18n.t("dialogs.settings.tip_mem_episodic_msg")
         )
         self._add_row(layout, self.i18n.t("dialogs.settings.episodic_message_threshold"),
-                      self.mem_episodic_msg)
+                      self.mem_episodic_msg,
+                      aliases=("episódica", "episodica", "episodic"))
 
         self.mem_episodic_threshold = self._labeled_slider(
             layout, self.i18n.t("dialogs.settings.episodic_auto_threshold"),
             0, 100, int(mem.get("episodic_auto_threshold", 0.6) * 100),
+            aliases=("episódica", "episodica", "episodic"),
         )
         self.mem_episodic_threshold.setToolTip(
             self.i18n.t("dialogs.settings.tip_mem_episodic_threshold")
@@ -1047,7 +1097,8 @@ class SettingsDialog(QDialog):
         self.cooldown_spin.setToolTip(
             self.i18n.t("dialogs.settings.tip_cooldown_spin")
         )
-        self._add_row(layout, self.i18n.t("dialogs.settings.cooldown_label"), self.cooldown_spin)
+        self._add_row(layout, self.i18n.t("dialogs.settings.cooldown_label"), self.cooldown_spin,
+                      aliases=("cooldown", "espera"))
 
         self.max_spin = QSpinBox()
         self.max_spin.setRange(0, 20)
@@ -1060,6 +1111,7 @@ class SettingsDialog(QDialog):
         self.prob_spin = self._labeled_slider(
             layout, self.i18n.t("dialogs.settings.random_prob_label"),
             0, 100, int(modes.get("comment_probability", 0.1) * 100),
+            aliases=("probabilidad", "prob"),
         )
         self.prob_spin.setToolTip(
             self.i18n.t("dialogs.settings.tip_prob_spin")

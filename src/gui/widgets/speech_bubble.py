@@ -71,6 +71,11 @@ class SpeechBubble(QWidget):
         self._base_max_width = max_width
 
         self.setAttribute(Qt.WA_TranslucentBackground)
+        # B6.1: mostrarse no debe activar la ventana ni sacar el foco de la
+        # aplicación en la que escribe el usuario. No se añade
+        # WindowDoesNotAcceptFocus: el input inline necesita el teclado y lo
+        # recupera explícitamente en show_inline_input().
+        self.setAttribute(Qt.WA_ShowWithoutActivating, True)
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint)
         self.setMinimumWidth(_MIN_BUBBLE_WIDTH)
         self._update_max_width()
@@ -382,6 +387,10 @@ class SpeechBubble(QWidget):
     def show_inline_input(self):
         self._fade_timer.stop()
         self.input_edit.show()
+        # La ventana aparece con WA_ShowWithoutActivating, así que hay que
+        # activarla aquí para que el teclado llegue al campo de texto.
+        self.raise_()
+        self.activateWindow()
         self.input_edit.setFocus()
         self.adjustSize()
 

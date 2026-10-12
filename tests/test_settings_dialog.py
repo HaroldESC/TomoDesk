@@ -1381,3 +1381,158 @@ class TestSaveOrdering:
         pushed = overlay.apply_bubble_config.call_args[0][0]
         assert pushed["bubble_style"] == "round"
         overlay.apply_overlay_opacity.assert_called_once_with(0.4)
+
+
+class TestClickableLabels:
+    """B6.3: pulsar la etiqueta de una fila enfoca el control (setBuddy)."""
+
+    @staticmethod
+    def _buddy_label(dialog, control):
+        return next(
+            (lbl for lbl in dialog.findChildren(QLabel) if lbl.buddy() is control),
+            None,
+        )
+
+    def test_spin_and_line_rows_have_a_buddy(self, qtbot, mock_config, mock_i18n):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        for control in (
+            dialog.llm_timeout,
+            dialog.llama_ctx,
+            dialog.mem_short_term,
+            dialog.llm_endpoint,
+        ):
+            assert self._buddy_label(dialog, control) is not None, control
+            assert control.focusPolicy() != Qt.NoFocus
+
+    def test_path_rows_point_at_the_line_edit_not_the_container(
+        self, qtbot, mock_config, mock_i18n
+    ):
+        """El "widget" de la fila es un contenedor: el buddy debe ser el campo."""
+        from PySide6.QtWidgets import QLineEdit
+
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        for control in (dialog.llama_path, dialog.mem_chroma_path):
+            assert isinstance(control, QLineEdit)
+            assert self._buddy_label(dialog, control) is not None
+            # El contenedor (padre) no recibe foco: no es el buddy.
+            container = control.parentWidget()
+            assert container is not control
+            assert self._buddy_label(dialog, container) is None
+
+    def test_slider_rows_have_a_buddy(self, qtbot, mock_config, mock_i18n):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        for control in (
+            dialog.prob_spin,
+            dialog.mem_episodic_threshold,
+            dialog.ui_char_size,
+        ):
+            assert self._buddy_label(dialog, control) is not None, control
+
+    def test_widget_without_focusable_children_has_no_buddy(self, mock_config):
+        from PySide6.QtWidgets import QWidget
+
+        from src.gui.windows.settings_dialog import _focusable_buddy
+
+        assert _focusable_buddy(None) is None
+        assert _focusable_buddy(QWidget()) is None
+
+
+class TestSettingsSearchTechnicalAliases:
+    """B6.3: buscar por el nombre tecnico aunque la UI este en espanol.
+
+    La etiqueta se muestra traducida; los alias son neutros respecto al
+    idioma, asi que "timeout", "endpoint" o "chroma" encuentran el ajuste.
+    """
+
+    MIND_PAGE = 4
+    APPEARANCE_PAGE = 0
+
+    def _visible_groups(self, dialog, page_index):
+        return [
+            g for g in dialog._pages[page_index].findChildren(QGroupBox)
+            if g.property("_search_text") and not g.isHidden()
+        ]
+
+    def _visible_pages(self, dialog):
+        return [
+            idx for idx in range(dialog._nav.count())
+            if not dialog._nav.item(idx).isHidden()
+        ]
+
+    def _names(self, dialog, page_index):
+        return [
+            g.property("_search_text")
+            for g in self._visible_groups(dialog, page_index)
+        ]
+
+    def test_timeout_alias_finds_the_llm_group(self, qtbot, mock_config, mock_i18n):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        dialog._search_field.setText("timeout")
+        assert self._names(dialog, self.MIND_PAGE) == ["dialogs.settings.mind_llm"]
+
+    def test_endpoint_alias_finds_the_llm_group(self, qtbot, mock_config, mock_i18n):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        dialog._search_field.setText("endpoint")
+        assert self._names(dialog, self.MIND_PAGE) == ["dialogs.settings.mind_llm"]
+
+    def test_api_alias_finds_the_llm_group(self, qtbot, mock_config, mock_i18n):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        dialog._search_field.setText("api")
+        assert self._names(dialog, self.MIND_PAGE) == ["dialogs.settings.mind_llm"]
+
+    def test_chroma_alias_finds_the_chroma_group(self, qtbot, mock_config, mock_i18n):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        dialog._search_field.setText("chroma")
+        assert self._names(dialog, self.MIND_PAGE) == [
+            "dialogs.settings.memory_chroma"
+        ]
+
+    def test_embeddings_alias_finds_the_chroma_group(
+        self, qtbot, mock_config, mock_i18n
+    ):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        dialog._search_field.setText("embeddings")
+        assert self._names(dialog, self.MIND_PAGE) == [
+            "dialogs.settings.memory_chroma"
+        ]
+
+    def test_episodic_alias_finds_the_episodic_group(
+        self, qtbot, mock_config, mock_i18n
+    ):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        dialog._search_field.setText("episodic")
+        assert self._names(dialog, self.MIND_PAGE) == [
+            "dialogs.settings.memory_episodic"
+        ]
+
+    def test_theme_alias_finds_the_theme_group(self, qtbot, mock_config, mock_i18n):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        dialog._search_field.setText("dark")
+        assert self._names(dialog, self.APPEARANCE_PAGE) == [
+            "dialogs.settings.appearance_theme"
+        ]
+
+    def test_unknown_query_shows_no_results(self, qtbot, mock_config, mock_i18n):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        dialog._search_field.setText("zzz_no_existe")
+        assert self._visible_pages(dialog) == []
+        assert not dialog._no_results_label.isHidden()
+
+    def test_search_still_matches_the_translated_label(
+        self, qtbot, mock_config, mock_i18n
+    ):
+        """Los alias se suman: la busqueda por etiqueta traducida sigue viva."""
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        dialog._search_field.setText("dialogs.settings.embedding_model")
+        assert self._names(dialog, self.MIND_PAGE) == [
+            "dialogs.settings.memory_chroma"
+        ]
+
+    def test_row_label_keeps_the_translated_label_plus_aliases(
+        self, qtbot, mock_config, mock_i18n
+    ):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        label = dialog.llm_timeout.property("_row_label")
+        assert "dialogs.settings.llm_timeout" in label
+        assert "timeout" in label
+        assert "segundos" in label
