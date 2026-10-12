@@ -362,6 +362,11 @@ NEW_UI_KEYS = [
     "chat.day_today",
     "chat.day_yesterday",
     "chat.day_separator",
+    # Tooltips de los botones de acción de los diálogos pequeños (Fase 3).
+    "dialogs.notes.save_tip",
+    "dialogs.notes.delete_tip",
+    "dialogs.memories.delete_tip",
+    "dialogs.reminders.cancel_tip",
 ]
 
 #: Tooltips de Ajustes (B5): clave del tooltip -> etiqueta del control.
@@ -411,6 +416,33 @@ def test_new_keys_exist_and_are_translated(key, lang):
     assert isinstance(text, str)
     assert text.strip() != ""
     assert text != key
+
+
+#: Tooltips de los botones de acción de Notas, Memorias y Recordatorios.
+ACTION_TOOLTIP_KEYS = [
+    "dialogs.notes.save_tip",
+    "dialogs.notes.delete_tip",
+    "dialogs.memories.delete_tip",
+    "dialogs.reminders.cancel_tip",
+]
+
+
+@pytest.mark.parametrize("lang", ["en", "es"])
+def test_action_tooltips_are_not_empty(lang):
+    """Cada tooltip explica la acción y no deja el botón sin contexto."""
+    data = json.loads((LOCALES_DIR / f"{lang}.json").read_text(encoding="utf-8"))
+    for key in ACTION_TOOLTIP_KEYS:
+        text = _lookup(data, key)
+        assert isinstance(text, str), key
+        assert text.strip(), key
+
+
+def test_action_tooltips_are_translated():
+    """El tooltip no puede ser el mismo texto en inglés y en español."""
+    en = json.loads((LOCALES_DIR / "en.json").read_text(encoding="utf-8"))
+    es = json.loads((LOCALES_DIR / "es.json").read_text(encoding="utf-8"))
+    for key in ACTION_TOOLTIP_KEYS:
+        assert _lookup(en, key) != _lookup(es, key), key
 
 
 @pytest.mark.parametrize("lang", ["en", "es"])

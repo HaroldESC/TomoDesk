@@ -126,6 +126,7 @@ class MemoriesDialog(QDialog):
         self.delete_btn.setAccessibleDescription(
             self.i18n.t("dialogs.memories.delete")
         )
+        self.delete_btn.setToolTip(self.i18n.t("dialogs.memories.delete_tip"))
         self.delete_btn.clicked.connect(self._delete_memory)
         btn_layout.addWidget(self.delete_btn)
 
@@ -173,6 +174,7 @@ class MemoriesDialog(QDialog):
             self._set_detail("")
         else:
             self._show_detail()
+        self._update_action_state()
 
     def _update_empty_state(self) -> None:
         """Muestra el aviso de lista vacía ocultando el listado."""
@@ -180,9 +182,18 @@ class MemoriesDialog(QDialog):
         self.empty_label.setVisible(empty)
         self.memory_list.setVisible(not empty)
 
+    def _update_action_state(self) -> None:
+        """Habilita Eliminar solo con una memoria seleccionada.
+
+        Mismo patrón que ``settings_dialog``: el botón gris deja claro que no
+        hay nada que borrar en vez de no hacer nada al pulsarlo.
+        """
+        self.delete_btn.setEnabled(self.memory_list.currentItem() is not None)
+
     def _on_current_changed(self, current, previous=None) -> None:
         """Puente de ``currentItemChanged`` a :meth:`_show_detail`."""
         self._show_detail()
+        self._update_action_state()
 
     def _show_detail(self) -> None:
         """Pinta la memoria seleccionada en el panel derecho.
@@ -213,6 +224,7 @@ class MemoriesDialog(QDialog):
         """Borra la memoria seleccionada previa confirmación."""
         current = self.memory_list.currentItem()
         if current is None:
+            self._update_action_state()
             return
         if not confirm(
             self,

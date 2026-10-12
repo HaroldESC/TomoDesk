@@ -225,6 +225,58 @@ class TestCancelConfirmation:
         mock_memory_manager.deactivate_reminder.assert_not_called()
 
 
+class TestCancelActionState:
+    """Cancelar sigue la selección en vez de fallar en silencio (bug manual)."""
+
+    def test_cancel_is_disabled_without_selection(self, make_dialog):
+        dialog = make_dialog([_reminder()])
+
+        assert dialog.cancel_btn.isEnabled() is False
+
+    def test_cancel_enables_when_a_reminder_is_selected(self, make_dialog):
+        dialog = make_dialog([_reminder()])
+
+        dialog.reminder_list.setCurrentRow(0)
+
+        assert dialog.cancel_btn.isEnabled() is True
+
+    def test_cancel_disables_when_the_selection_is_cleared(self, make_dialog):
+        dialog = make_dialog([_reminder()])
+        dialog.reminder_list.setCurrentRow(0)
+
+        dialog.reminder_list.setCurrentRow(-1)
+
+        assert dialog.cancel_btn.isEnabled() is False
+
+    def test_cancel_disables_again_after_cancelling(
+        self, make_dialog, mock_memory_manager, answer
+    ):
+        dialog = make_dialog([_reminder()])
+        answer(True)
+        mock_memory_manager.list_reminders.return_value = []
+        dialog.reminder_list.setCurrentRow(0)
+
+        dialog._cancel_reminder()
+
+        assert dialog.cancel_btn.isEnabled() is False
+
+    def test_tooltip_is_set(self, make_dialog):
+        dialog = make_dialog([_reminder()])
+
+        assert dialog.cancel_btn.toolTip() == "dialogs.reminders.cancel_tip"
+
+    def test_clicking_cancel_without_selection_does_not_deactivate(
+        self, make_dialog, mock_memory_manager, answer
+    ):
+        """Regresión: el botón deshabilitado no llega a ``_cancel_reminder``."""
+        dialog = make_dialog([_reminder()])
+        answer(True)
+
+        dialog.cancel_btn.click()
+
+        mock_memory_manager.deactivate_reminder.assert_not_called()
+
+
 class TestListRobustness:
     """``trigger_time`` no siempre viene con la forma esperada."""
 

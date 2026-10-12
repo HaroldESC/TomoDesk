@@ -364,6 +364,54 @@ class TestDeleteConfirmation:
         mock_memory_manager.delete_episodic_memory.assert_not_called()
 
 
+class TestDeleteActionState:
+    """Eliminar sigue la selección en vez de fallar en silencio (bug manual)."""
+
+    def test_delete_is_disabled_when_the_list_is_empty(self, dialog):
+        assert dialog.delete_btn.isEnabled() is False
+
+    def test_delete_is_enabled_with_the_auto_selected_memory(self, make_dialog):
+        dialog = make_dialog([_memory()])
+
+        assert dialog.memory_list.currentRow() == 0
+        assert dialog.delete_btn.isEnabled() is True
+
+    def test_delete_disables_when_the_selection_is_cleared(self, make_dialog):
+        dialog = make_dialog([_memory()])
+
+        dialog.memory_list.setCurrentRow(-1)
+
+        assert dialog.delete_btn.isEnabled() is False
+
+    def test_delete_disables_again_after_deleting(
+        self, make_dialog, mock_memory_manager, answer
+    ):
+        dialog = make_dialog([_memory()])
+        answer(True)
+        mock_memory_manager.list_episodic_log.return_value = []
+
+        dialog._delete_memory()
+
+        assert dialog.delete_btn.isEnabled() is False
+
+    def test_tooltip_is_set(self, make_dialog):
+        dialog = make_dialog([_memory()])
+
+        assert dialog.delete_btn.toolTip() == "dialogs.memories.delete_tip"
+
+    def test_clicking_delete_without_selection_does_not_delete(
+        self, make_dialog, mock_memory_manager, answer
+    ):
+        """Regresión: el botón deshabilitado no llega a ``_delete_memory``."""
+        dialog = make_dialog([_memory()])
+        answer(True)
+        dialog.memory_list.setCurrentRow(-1)
+
+        dialog.delete_btn.click()
+
+        mock_memory_manager.delete_episodic_memory.assert_not_called()
+
+
 def _memory_item_kwargs(dialog) -> dict:
     """Argumentos de la última llamada a ``i18n.t`` de tipo ``memory_item``."""
     for call in reversed(dialog.i18n.t.call_args_list):

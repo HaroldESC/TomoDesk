@@ -82,11 +82,13 @@ class NotesDialog(QDialog):
         btn_layout = QHBoxLayout()
 
         self.save_btn = QPushButton(self.i18n.t("dialogs.notes.save"))
+        self.save_btn.setToolTip(self.i18n.t("dialogs.notes.save_tip"))
         self.save_btn.clicked.connect(self._save_note)
         btn_layout.addWidget(self.save_btn)
 
         self.delete_btn = QPushButton(self.i18n.t("dialogs.notes.delete"))
         self.delete_btn.setObjectName("danger")
+        self.delete_btn.setToolTip(self.i18n.t("dialogs.notes.delete_tip"))
         self.delete_btn.clicked.connect(self._delete_note)
         btn_layout.addWidget(self.delete_btn)
 
@@ -99,6 +101,8 @@ class NotesDialog(QDialog):
 
         self.title_input.textChanged.connect(self._mark_dirty)
         self.content_input.textChanged.connect(self._mark_dirty)
+        # El editor habilita o deshabilita Guardar según haya título.
+        self.title_input.textChanged.connect(self._update_action_state)
 
         # Recorrido de Tab natural: listado -> editor -> botones.
         QWidget.setTabOrder(self.note_list, self.title_input)
@@ -131,6 +135,7 @@ class NotesDialog(QDialog):
 
         self._update_empty_state()
         self._select_row(row)
+        self._update_action_state()
 
     def _update_empty_state(self) -> None:
         """Muestra el aviso de lista vacía ocultando el listado."""
@@ -141,6 +146,17 @@ class NotesDialog(QDialog):
     def _mark_dirty(self) -> None:
         """El usuario ha tocado el editor: hay cambios sin guardar."""
         self._dirty = True
+
+    def _update_action_state(self) -> None:
+        """Habilita cada acción solo cuando puede completarse.
+
+        Sigue el patrón de ``settings_dialog``: si Guardar no tiene título o
+        no hay una nota seleccionada que eliminar, el botón queda deshabilitado
+        en vez de tragarse la pulsación en silencio.
+        """
+        row = self.note_list.currentRow()
+        self.delete_btn.setEnabled(0 <= row < len(self._notes))
+        self.save_btn.setEnabled(bool(self.title_input.text().strip()))
 
     def _select_row(self, row: int) -> None:
         """Carga la nota de la fila ``row`` en el editor sin preguntar nada."""
@@ -165,6 +181,7 @@ class NotesDialog(QDialog):
         self.content_input.clear()
         del title_blocker, content_blocker
         self._dirty = False
+        self._update_action_state()
 
     def _restore_current_row(self) -> None:
         """Devuelve la selección de la lista a la nota que se está editando.
@@ -189,12 +206,12 @@ class NotesDialog(QDialog):
 
     def _on_select(self, row: int) -> None:
         """Cambia de nota; si hay cambios sin guardar, pregunta antes."""
-        if row == self._current_row:
-            return
-        if not self._confirm_discard():
-            self._restore_current_row()
-            return
-        self._select_row(row)
+        if row != self._current_row:
+            if not self._confirm_discard():
+                self._restore_current_row()
+            else:
+                self._select_row(row)
+        self._update_action_state()
 
     def _save_note(self) -> None:
         """Guarda la nota editada (o la crea si no hay ninguna seleccionada)."""
@@ -225,6 +242,7 @@ class NotesDialog(QDialog):
         """
         current_row = self.note_list.currentRow()
         if current_row < 0 or current_row >= len(self._notes):
+            self._update_action_state()
             return
         if not confirm(
             self,
@@ -243,6 +261,7 @@ class NotesDialog(QDialog):
         """Prepara una nota en blanco, avisando de los cambios pendientes."""
         if not self._confirm_discard():
             self._restore_current_row()
+            self._update_action_state()
             return
         blocker = QSignalBlocker(self.note_list)
         # clearSelection() no mueve la fila actual: hay que deseleccionar de
@@ -252,6 +271,7 @@ class NotesDialog(QDialog):
         self._current_row = -1
         self._clear_editor()
         self.title_input.setFocus()
+        self._update_action_state()
 
     def closeEvent(self, event) -> None:
         """Cerrar con cambios sin guardar pide confirmación (botón X)."""

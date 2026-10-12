@@ -497,6 +497,71 @@ class TestDeleteConfirmation:
         mock_memory_manager.delete_note.assert_not_called()
 
 
+class TestActionState:
+    """Los botones siguen la selección y el título (bug de prueba manual).
+
+    Pulsar Eliminar sin nota o Guardar sin título no hacía nada, sin aviso.
+    Ahora el botón queda deshabilitado, siguiendo el patrón de
+    ``settings_dialog``.
+    """
+
+    def test_delete_is_disabled_without_selection(self, two_notes):
+        """Al abrir con notas no hay fila activa: nada que borrar."""
+        assert two_notes.delete_btn.isEnabled() is False
+
+    def test_delete_enables_when_a_note_is_selected(self, two_notes):
+        two_notes.note_list.setCurrentRow(0)
+
+        assert two_notes.delete_btn.isEnabled() is True
+
+    def test_new_note_disables_delete_again(self, two_notes):
+        two_notes.note_list.setCurrentRow(0)
+
+        two_notes._new_note()
+
+        assert two_notes.note_list.currentRow() == -1
+        assert two_notes.delete_btn.isEnabled() is False
+
+    def test_save_enables_with_a_title(self, dialog):
+        dialog.title_input.setText("una nota")
+
+        assert dialog.save_btn.isEnabled() is True
+
+    def test_save_stays_disabled_with_a_blank_title(self, two_notes):
+        two_notes.note_list.setCurrentRow(0)
+
+        two_notes.title_input.setText("   ")
+
+        assert two_notes.save_btn.isEnabled() is False
+
+    def test_save_re_enables_after_selecting_a_note(self, two_notes):
+        """Cargar una nota con título vuelve a permitir guardar."""
+        two_notes.note_list.setCurrentRow(0)
+        two_notes.title_input.setText("")
+        assert two_notes.save_btn.isEnabled() is False
+
+        two_notes.note_list.setCurrentRow(1)
+
+        assert two_notes.title_input.text() == "primera"
+        assert two_notes.save_btn.isEnabled() is True
+
+    def test_tooltips_explain_the_buttons(self, two_notes):
+        assert two_notes.save_btn.toolTip() == "dialogs.notes.save_tip"
+        assert two_notes.delete_btn.toolTip() == "dialogs.notes.delete_tip"
+        assert two_notes.save_btn.toolTip().strip()
+        assert two_notes.delete_btn.toolTip().strip()
+
+    def test_clicking_delete_without_selection_never_calls_the_store(
+        self, two_notes, mock_memory_manager, answer
+    ):
+        """Regresión: el botón deshabilitado no llega a ``_delete_note``."""
+        answer(True)
+
+        two_notes.delete_btn.click()
+
+        mock_memory_manager.delete_note.assert_not_called()
+
+
 class TestEmptyList:
     """Sin notas la lista no es un hueco mudo."""
 

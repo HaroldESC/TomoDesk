@@ -47,6 +47,9 @@ class RemindersDialog(QDialog):
         self.reminder_list.setAccessibleName(
             self.i18n.t("dialogs.reminders.active_reminders")
         )
+        # Cancelar solo tiene sentido con un recordatorio seleccionado: el
+        # botón se habilita y se deshabilita con la selección.
+        self.reminder_list.currentItemChanged.connect(self._update_action_state)
         reminders_label.setBuddy(self.reminder_list)
         layout.addWidget(reminders_label)
         layout.addWidget(self.reminder_list, stretch=1)
@@ -87,6 +90,7 @@ class RemindersDialog(QDialog):
         self.cancel_btn = QPushButton(self.i18n.t("dialogs.reminders.cancel_selected"))
         # Cancelar un recordatorio lo desactiva: es una accion destructiva.
         self.cancel_btn.setObjectName("danger")
+        self.cancel_btn.setToolTip(self.i18n.t("dialogs.reminders.cancel_tip"))
         self.cancel_btn.clicked.connect(self._cancel_reminder)
         btn_layout.addWidget(self.cancel_btn)
 
@@ -122,6 +126,15 @@ class RemindersDialog(QDialog):
         empty = self.reminder_list.count() == 0
         self.empty_label.setVisible(empty)
         self.reminder_list.setVisible(not empty)
+        self._update_action_state()
+
+    def _update_action_state(self) -> None:
+        """Habilita Cancelar solo con un recordatorio seleccionado.
+
+        Mismo patrón que ``settings_dialog``: un botón gris comunica que la
+        acción no está disponible en vez de fallar en silencio.
+        """
+        self.cancel_btn.setEnabled(self.reminder_list.currentItem() is not None)
 
     def _add_reminder(self) -> None:
         """Crea un recordatorio con el mensaje y los minutos escritos."""
@@ -140,6 +153,7 @@ class RemindersDialog(QDialog):
         """Desactiva el recordatorio seleccionado previa confirmación."""
         current = self.reminder_list.currentItem()
         if current is None:
+            self._update_action_state()
             return
         if not confirm(
             self,
