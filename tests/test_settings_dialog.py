@@ -4,7 +4,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QGroupBox, QLabel, QMessageBox, QSizePolicy
+from PySide6.QtWidgets import (
+    QGroupBox, QLabel, QMessageBox, QPushButton, QSizePolicy,
+)
 
 from src.context.context_pack import ContextPackManager
 from src.platform import PlatformCapabilities, _set_platform
@@ -107,6 +109,194 @@ def _discard_button(box, key: str):
     pueden recuperar por ``StandardButton``.
     """
     return next(b for b in box.buttons() if b.text() == key)
+
+
+def _buttons_by_text(dialog) -> dict:
+    """Botones del diálogo indexados por su texto traducido."""
+    found: dict = {}
+    for button in dialog.findChildren(QPushButton):
+        found.setdefault(button.text(), []).append(button)
+    return found
+
+
+def _only_button(dialog, key: str) -> QPushButton:
+    buttons = _buttons_by_text(dialog).get(key)
+    assert buttons, f"no hay ningún botón con el texto {key}"
+    assert len(buttons) == 1, f"{key} aparece {len(buttons)} veces"
+    return buttons[0]
+
+
+class TestButtonHierarchy:
+    """``Design.md`` §2.1: un objectName por rol, uno solo por diálogo."""
+
+    def test_save_is_primary_without_object_name(self, qtbot, mock_config, mock_i18n):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        assert _only_button(dialog, "dialogs.settings.save").objectName() == ""
+        assert _only_button(dialog, "dialogs.settings.close").objectName() == "secondary"
+
+    def test_no_button_depends_on_the_removed_primary_id(
+        self, qtbot, mock_config, mock_i18n
+    ):
+        """``QPushButton#primary`` ya no existe en el QSS."""
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        primaries = [
+            b.text() for b in dialog.findChildren(QPushButton)
+            if b.objectName() == "primary"
+        ]
+        assert primaries == []
+
+    def test_destructive_actions_are_danger(self, qtbot, mock_config, mock_i18n):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        for key in (
+            "dialogs.settings.sprite_delete",
+            "dialogs.settings.pack_delete",
+            "dialogs.settings.context_delete",
+            "dialogs.settings.memory_clear_all",
+        ):
+            assert _only_button(dialog, key).objectName() == "danger", key
+
+    def test_utility_actions_are_flat(self, qtbot, mock_config, mock_i18n):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        for key in (
+            "dialogs.settings.hints_reset",
+            "dialogs.settings.pack_reload",
+            "dialogs.settings.context_reload",
+            "dialogs.settings.download_model",
+            "dialogs.settings.memory_reindex",
+            "dialogs.settings.db_compact",
+            "dialogs.settings.db_export",
+            "dialogs.settings.db_import",
+            "dialogs.settings.log_open_folder",
+            "dialogs.settings.tutorial_play",
+        ):
+            assert _only_button(dialog, key).objectName() == "flat", key
+        # Los cuatro "Examinar" comparten texto: todos deben ser planos.
+        browsing = _buttons_by_text(dialog)["dialogs.settings.browse"]
+        assert len(browsing) == 4
+        assert all(b.objectName() == "flat" for b in browsing)
+
+    def test_every_button_uses_a_known_variant(self, qtbot, mock_config, mock_i18n):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        allowed = {"", "secondary", "danger", "flat"}
+        unknown = {
+            b.objectName()
+            for b in dialog.findChildren(QPushButton)
+            if b.objectName() not in allowed
+        }
+        assert unknown == set()
+
+
+class TestStatusIconsSetting:
+    """``ui.status_icons`` se lee, se persiste y se empuja en caliente."""
+
+    def test_defaults_to_off(self, qtbot, mock_config, mock_i18n):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        assert dialog.ui_status_icons.isChecked() is False
+
+    def test_reads_the_configured_value(self, qtbot, mock_config, mock_i18n):
+        mock_config.setdefault("ui", {})["status_icons"] = True
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        assert dialog.ui_status_icons.isChecked() is True
+
+    def test_saving_persists_the_flag(self, qtbot, mock_config, mock_i18n):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        dialog.ui_status_icons.setChecked(True)
+        dialog._save_appearance()
+        assert mock_config["ui"]["status_icons"] is True
+
+        dialog.ui_status_icons.setChecked(False)
+        dialog._save_appearance()
+        assert mock_config["ui"]["status_icons"] is False
+
+    def test_toggling_marks_the_dialog_dirty(self, qtbot, mock_config, mock_i18n):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        assert dialog._dirty is False
+        dialog.ui_status_icons.setChecked(True)
+        assert dialog._dirty is True
+
+    def test_saving_pushes_the_flag_to_the_owner(self, qtbot, mock_config, mock_i18n):
+        from types import SimpleNamespace
+
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        owner = SimpleNamespace(overlay=None, set_status_icons_enabled=MagicMock())
+        dialog.parent = lambda: owner
+        dialog.ui_status_icons.setChecked(True)
+
+        dialog._save_appearance()
+
+        owner.set_status_icons_enabled.assert_called_once_with(True)
+
+    def test_owner_without_the_setter_is_tolerated(self, qtbot, mock_config, mock_i18n):
+        from types import SimpleNamespace
+
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        dialog.parent = lambda: SimpleNamespace(overlay=None)
+        dialog.ui_status_icons.setChecked(True)
+        dialog._save_appearance()  # must not raise
+
+
+class TestTranslatedCombos:
+    """Los combos muestran texto traducido y guardan el valor de config."""
+
+    def test_language_combo_maps_text_to_value(self, qtbot, mock_config, mock_i18n):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        assert [
+            dialog.ui_lang.itemData(i) for i in range(dialog.ui_lang.count())
+        ] == ["auto", "en", "es"]
+        for i in range(dialog.ui_lang.count()):
+            assert dialog.ui_lang.itemText(i).startswith("dialogs.settings.language_")
+            assert dialog.ui_lang.itemText(i) != dialog.ui_lang.itemData(i)
+
+    def test_theme_combo_maps_text_to_value(self, qtbot, mock_config, mock_i18n):
+        mock_config.setdefault("ui", {})["theme"] = "dark"
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        assert [
+            dialog.ui_theme.itemData(i) for i in range(dialog.ui_theme.count())
+        ] == ["light", "dark"]
+        assert dialog.ui_theme.currentData() == "dark"
+        assert dialog.ui_theme.currentText() != "dark"
+
+    def test_overlay_position_combo_lists_positions(
+        self, qtbot, mock_config, mock_i18n
+    ):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        assert [
+            dialog.ui_overlay_default.itemData(i)
+            for i in range(dialog.ui_overlay_default.count())
+        ] == [
+            "bottom-right", "bottom-left", "top-right", "top-left", "center",
+        ]
+        assert (
+            dialog.ui_overlay_default.currentData() == "bottom-right"
+        )
+
+    def test_unknown_configured_value_falls_back_to_the_first_option(
+        self, qtbot, mock_config, mock_i18n
+    ):
+        ui = mock_config.setdefault("ui", {})
+        ui["language"] = "klingon"
+        ui["theme"] = "neon"
+        ui["overlay_default_position"] = "middle-earth"
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        assert dialog.ui_lang.currentData() == "auto"
+        assert dialog.ui_theme.currentData() == "light"
+        assert dialog.ui_overlay_default.currentData() == "bottom-right"
+
+    def test_save_writes_the_selected_values_not_the_labels(
+        self, qtbot, mock_config, mock_i18n
+    ):
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        dialog.ui_lang.setCurrentIndex(dialog.ui_lang.findData("es"))
+        dialog.ui_theme.setCurrentIndex(dialog.ui_theme.findData("dark"))
+        dialog.ui_overlay_default.setCurrentIndex(
+            dialog.ui_overlay_default.findData("top-left")
+        )
+
+        dialog._save_appearance()
+
+        assert mock_config["ui"]["language"] == "es"
+        assert mock_config["ui"]["theme"] == "dark"
+        assert mock_config["ui"]["overlay_default_position"] == "top-left"
 
 
 def _answer_discard(monkeypatch, confirm: bool) -> list:
@@ -320,13 +510,13 @@ class TestModelDownload:
     ):
         dialog = _make_dialog(qtbot, mock_config, mock_i18n)
 
-        dialog.ui_lang.setCurrentText("es")
+        dialog.ui_lang.setCurrentIndex(dialog.ui_lang.findData("es"))
         dialog._save_appearance()
         assert "ui" in mock_config
         assert mock_config["ui"]["language"] == "es"
         assert mock_config["ui"]["language_set"] is True
 
-        dialog.ui_lang.setCurrentText("auto")
+        dialog.ui_lang.setCurrentIndex(dialog.ui_lang.findData("auto"))
         dialog._save_appearance()
         assert mock_config["ui"]["language"] == "auto"
         assert mock_config["ui"]["language_set"] is False
@@ -780,20 +970,31 @@ class TestBubbleStyleOptions:
 
         dialog = _make_dialog(qtbot, mock_config, mock_i18n)
         offered = [
-            dialog.ui_bubble_style.itemText(i)
+            dialog.ui_bubble_style.itemData(i)
             for i in range(dialog.ui_bubble_style.count())
         ]
         assert offered == [s.value for s in BubbleStyle]
 
+    def test_combo_shows_translated_text_not_the_raw_value(
+        self, qtbot, mock_config, mock_i18n
+    ):
+        """El usuario ve texto legible; el valor sigue siendo la clave."""
+        dialog = _make_dialog(qtbot, mock_config, mock_i18n)
+        for i in range(dialog.ui_bubble_style.count()):
+            text = dialog.ui_bubble_style.itemText(i)
+            assert text.startswith("dialogs.settings.bubble_style_")
+            assert text != dialog.ui_bubble_style.itemData(i)
+
     def test_stale_config_value_falls_back(self, qtbot, mock_config, mock_i18n):
         mock_config.setdefault("ui", {})["bubble_style"] = "legacy_style"
         dialog = _make_dialog(qtbot, mock_config, mock_i18n)
-        assert dialog.ui_bubble_style.currentText() == "dark"
+        assert dialog.ui_bubble_style.currentData() == "dark"
 
     def test_valid_config_value_is_selected(self, qtbot, mock_config, mock_i18n):
         mock_config.setdefault("ui", {})["bubble_style"] = "round"
         dialog = _make_dialog(qtbot, mock_config, mock_i18n)
-        assert dialog.ui_bubble_style.currentText() == "round"
+        assert dialog.ui_bubble_style.currentData() == "round"
+        assert dialog.ui_bubble_style.currentText() != "round"
 
 
 class TestDirtyTracking:
@@ -909,8 +1110,8 @@ class TestSaveOrdering:
         dialog = _make_dialog(qtbot, mock_config, mock_i18n)
         dialog.llm_provider.setCurrentText("openai_compatible")
         dialog.llm_endpoint.setText("esto-no-es-un-endpoint")
-        dialog.ui_lang.setCurrentText("es")
-        dialog.ui_theme.setCurrentText("dark")
+        dialog.ui_lang.setCurrentIndex(dialog.ui_lang.findData("es"))
+        dialog.ui_theme.setCurrentIndex(dialog.ui_theme.findData("dark"))
         snapshot = copy.deepcopy(mock_config)
         emitted = []
         dialog.language_changed.connect(lambda: emitted.append(True))
@@ -966,7 +1167,7 @@ class TestSaveOrdering:
         monkeypatch.setattr("src.gui.windows.settings_dialog._creds", MagicMock())
         dialog.show()
 
-        dialog.ui_lang.setCurrentText("es")
+        dialog.ui_lang.setCurrentIndex(dialog.ui_lang.findData("es"))
         dialog._save_settings()
 
         mock_i18n.set_language.assert_called_once_with("es")
@@ -992,7 +1193,9 @@ class TestSaveOrdering:
         dialog = _make_dialog(qtbot, mock_config, mock_i18n)
         overlay = MagicMock()
         dialog.parent = lambda: SimpleNamespace(overlay=overlay)
-        dialog.ui_bubble_style.setCurrentText("round")
+        dialog.ui_bubble_style.setCurrentIndex(
+            dialog.ui_bubble_style.findData("round")
+        )
         dialog.ui_overlay_opacity.setValue(40)
 
         dialog._save_appearance()

@@ -37,6 +37,7 @@ class MemoriesDialog(QDialog):
         btn_layout.addWidget(self.delete_btn)
 
         self.refresh_btn = QPushButton(self.i18n.t("dialogs.memories.refresh"))
+        self.refresh_btn.setObjectName("flat")
         self.refresh_btn.clicked.connect(self._load_memories)
         btn_layout.addWidget(self.refresh_btn)
 

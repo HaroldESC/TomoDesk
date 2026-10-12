@@ -57,7 +57,7 @@ class PrivacyConsentDialog(QDialog):
 
         buttons = QHBoxLayout()
         accept_btn = QPushButton(self._t("privacy.accept", _FALLBACK_ACCEPT))
-        accept_btn.setObjectName("primary")
+        # Primario: sin objectName (Design.md §2.1).
         accept_btn.clicked.connect(self._on_accept)
         buttons.addWidget(accept_btn)
 

@@ -1,4 +1,5 @@
 import os
+import re
 
 from unittest.mock import MagicMock
 
@@ -247,6 +248,82 @@ def test_unknown_style_falls_back_to_dark(qapp):
     bubble = SpeechBubble(style="does_not_exist")
     assert bubble.style.value == "dark"
     assert bubble._radius == 12.0
+
+
+# ── Geometría del input inline (Design.md §3.3) ──────────────────────────────
+
+def _input_block(qss: str) -> str:
+    """Devuelve el bloque ``QLineEdit`` (sin el foco) de una hoja QSS."""
+    match = re.search(r"QLineEdit \{.*?\}(?=\s*QLineEdit:focus)", qss, re.S)
+    assert match is not None, "la hoja no declara QLineEdit"
+    return match.group(0)
+
+
+@pytest.mark.parametrize("style", ["dark", "comic", "flat", "round"])
+def test_inline_input_geometry_matches_design(qapp, style):
+    """Borde 2.5px, radio 8px, padding 5px 10px y peso 600 en todos los estilos."""
+    from src.gui.styles import styles as s
+
+    bubble = SpeechBubble(style=style)
+    qss = bubble.styleSheet()
+    block = _input_block(qss)
+
+    assert re.search(r"border\s*:\s*2\.5px solid", block)
+    assert re.search(r"border-radius\s*:\s*8px", block)
+    assert re.search(r"padding\s*:\s*5px 10px", block)
+    assert re.search(r"font-weight\s*:\s*600", block)
+    assert re.search(r"font-size\s*:\s*12px", block)
+    # El foco usa el token, no un hex suelto.
+    assert s.BORDER_FOCUS in qss
+    assert re.search(r"QLineEdit:focus \{\s*border-color:", qss)
+
+
+@pytest.mark.parametrize(
+    "style", ["dark", "comic", "flat", "round"],
+)
+def test_every_style_keeps_its_own_palette(qapp, style):
+    """La geometría se homogeneiza, pero cada estilo conserva sus colores."""
+    from src.gui.styles import styles as s
+    from PySide6.QtGui import QColor
+
+    recipe = s.bubble_style_recipe(style)
+    bubble = SpeechBubble(style=style)
+
+    assert bubble._bg_color == QColor(*recipe[0])
+    assert bubble._border_color == QColor(*recipe[1])
+    assert bubble._border_width == recipe[2]
+    assert bubble._radius == recipe[5]
+
+    expected_bg, expected_txt, expected_bdr = s.bubble_input_palette(style)
+    block = _input_block(bubble.styleSheet())
+    assert re.search(rf"background\s*:\s*{re.escape(expected_bg)}", block)
+    assert re.search(rf"color\s*:\s*{re.escape(expected_txt)}", block)
+    assert re.search(rf"border\s*:\s*2\.5px solid {re.escape(expected_bdr)}", block)
+
+
+def test_all_styles_are_visually_distinct(qapp):
+    """Los cuatro estilos del combo deben seguir diferenciándose."""
+    seen_bg, seen_border = set(), set()
+    for style in ("dark", "comic", "flat", "round"):
+        bubble = SpeechBubble(style=style)
+        seen_bg.add(bubble._bg_color.name())
+        seen_border.add(bubble._border_color.name())
+    assert len(seen_bg) == 4
+    assert len(seen_border) == 4
+
+
+def test_scrollbar_qss_matches_design(qapp):
+    """Design.md §4: scrollbar mínima de 6px con handle redondeado."""
+    bubble = SpeechBubble(style="dark")
+    qss = bubble.styleSheet()
+
+    assert "QScrollBar:vertical" in qss
+    assert re.search(r"QScrollBar:vertical \{[^}]*width\s*:\s*6px", qss, re.S)
+    assert re.search(r"background\s*:\s*transparent", qss)
+    assert re.search(r"min-height\s*:\s*28px", qss)
+    assert re.search(r"border-radius\s*:\s*3px", qss)
+    # El handle toma el color del borde de la receta del estilo.
+    assert bubble._border_color.name() in qss
 
 
 def test_radius_never_exceeds_available_space(qapp):

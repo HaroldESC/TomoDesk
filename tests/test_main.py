@@ -291,6 +291,216 @@ class TestMainWindowPositioning:
             window.close()
 
 
+class TestMainWindowStatusIcons:
+    """Los iconos de la barra de estado son opcionales (ui.status_icons)."""
+
+    def _window(self, qapp, config, memory_manager, i18n, state_manager,
+                proactive_engine=None):
+        from src.gui.windows.main_window import MainWindow
+
+        return MainWindow(
+            config=config,
+            memory_manager=memory_manager,
+            i18n=i18n,
+            state_manager=state_manager,
+            proactive_engine=proactive_engine,
+        )
+
+    def test_disabled_by_default_shows_plain_text(
+        self, qapp, mock_config, mock_memory_manager, mock_state_manager
+    ):
+        window = self._window(
+            qapp, mock_config, mock_memory_manager,
+            _real_i18n("en"), mock_state_manager,
+        )
+        try:
+            assert window.mood_label.text() == "Tomo is listening."
+            assert window._mode_label.text() == ""
+        finally:
+            window.close()
+
+    def test_disabled_default_matches_the_unprefixed_text(
+        self, qapp, mock_config, mock_memory_manager, mock_state_manager
+    ):
+        """Sin iconos ni un espacio inicial que desalinee la barra."""
+        window = self._window(
+            qapp, mock_config, mock_memory_manager,
+            _real_i18n("en"), mock_state_manager,
+        )
+        try:
+            assert not window.mood_label.text().startswith(" ")
+            assert window.mood_label.text() == window.mood_label.text().lstrip()
+        finally:
+            window.close()
+
+    def test_enabled_prefixes_the_mood_icon(
+        self, qapp, mock_config, mock_memory_manager, mock_state_manager
+    ):
+        mock_config.setdefault("ui", {})["status_icons"] = True
+        window = self._window(
+            qapp, mock_config, mock_memory_manager,
+            _real_i18n("en"), mock_state_manager,
+        )
+        try:
+            assert window.mood_label.text() == "\u2764\ufe0f Tomo is listening."
+        finally:
+            window.close()
+
+    def test_mood_icon_follows_the_current_state(
+        self, qapp, mock_config, mock_memory_manager
+    ):
+        from src.gui.styles.icons import ICON_RADIANT
+
+        state = MagicMock()
+        state.get_state.return_value = {
+            "happiness": 0.95, "energy": 0.5, "curiosity": 0.1,
+            "closeness": 0.1, "connection": 0.9,
+        }
+        mock_config.setdefault("ui", {})["status_icons"] = True
+        window = self._window(
+            qapp, mock_config, mock_memory_manager, _real_i18n("en"), state,
+        )
+        try:
+            assert window.mood_label.text() == f"{ICON_RADIANT} Tomo is radiant today \u2728"
+        finally:
+            window.close()
+
+    def test_unknown_state_falls_back_without_breaking(
+        self, qapp, mock_config, mock_memory_manager
+    ):
+        from src.gui.styles import icons
+
+        assert icons.status_icon("brand_new_state") == ""
+        assert icons.icon("mode", "brand_new_mode") == ""
+        assert icons.icon("no_such_family", "listening") == ""
+
+    def test_mode_label_icons(
+        self, qapp, mock_config, mock_memory_manager, mock_state_manager
+    ):
+        from types import SimpleNamespace
+
+        mock_config.setdefault("ui", {})["status_icons"] = True
+        policy = MagicMock()
+        policy.is_enabled.return_value = True
+        policy.focus_mode = False
+        engine = SimpleNamespace(policy=policy)
+        window = self._window(
+            qapp, mock_config, mock_memory_manager,
+            _real_i18n("en"), mock_state_manager, engine,
+        )
+        try:
+            # Sin foco ni DND solo se ve el icono de proactividad.
+            assert window._mode_label.text() == "\U0001f514"
+
+            policy.focus_mode = True
+            window._update_status_message()
+            assert window._mode_label.text() == "\U0001f3af \U0001f515 Focus"
+
+            policy.focus_mode = False
+            policy.is_enabled.return_value = False
+            window._update_status_message()
+            assert window._mode_label.text() == "\U0001f515 \U0001f507 DND"
+        finally:
+            window.close()
+
+    def test_mode_label_unchanged_when_icons_are_off(
+        self, qapp, mock_config, mock_memory_manager, mock_state_manager
+    ):
+        from types import SimpleNamespace
+
+        policy = MagicMock()
+        policy.is_enabled.return_value = False
+        policy.focus_mode = False
+        engine = SimpleNamespace(policy=policy)
+        window = self._window(
+            qapp, mock_config, mock_memory_manager,
+            _real_i18n("es"), mock_state_manager, engine,
+        )
+        try:
+            assert window._mode_label.text() == "\U0001f507 No molestar"
+        finally:
+            window.close()
+
+    def test_set_status_icons_enabled_changes_it_live(
+        self, qapp, mock_config, mock_memory_manager, mock_state_manager
+    ):
+        window = self._window(
+            qapp, mock_config, mock_memory_manager,
+            _real_i18n("en"), mock_state_manager,
+        )
+        try:
+            assert window._status_icons_enabled is False
+            assert window.mood_label.text() == "Tomo is listening."
+
+            window.set_status_icons_enabled(True)
+
+            assert window._status_icons_enabled is True
+            assert window.mood_label.text() == "\u2764\ufe0f Tomo is listening."
+
+            window.set_status_icons_enabled(False)
+
+            assert window.mood_label.text() == "Tomo is listening."
+        finally:
+            window.close()
+
+    def test_missing_state_manager_keeps_the_bar_untouched(
+        self, qapp, mock_config, mock_memory_manager
+    ):
+        window = self._window(
+            qapp, mock_config, mock_memory_manager, _real_i18n("en"), None,
+        )
+        try:
+            window.set_status_icons_enabled(True)  # must not raise
+            assert window.mood_label.text() == ""
+        finally:
+            window.close()
+
+
+class TestMainWindowSendButton:
+    """El ancho del botón no debe bailar al pasar a "Pensando..."."""
+
+    def _window(self, config, memory_manager, i18n):
+        from src.gui.windows.main_window import MainWindow
+
+        return MainWindow(config=config, memory_manager=memory_manager, i18n=i18n)
+
+    def test_width_covers_the_widest_label(self, qapp, mock_config,
+                                           mock_memory_manager):
+        from PySide6.QtGui import QFontMetrics
+
+        window = self._window(mock_config, mock_memory_manager, _real_i18n("en"))
+        try:
+            metrics = QFontMetrics(window.send_btn.font())
+            for text in ("Send", "Thinking..."):
+                assert window.send_btn.width() >= (
+                    metrics.horizontalAdvance(text)
+                ), text
+        finally:
+            window.close()
+
+    def test_thinking_text_does_not_change_the_width(self, qapp, mock_config,
+                                                     mock_memory_manager):
+        window = self._window(mock_config, mock_memory_manager, _real_i18n("en"))
+        try:
+            before = window.send_btn.width()
+            window.send_btn.setText(window.i18n.t("chat.thinking"))
+            assert window.send_btn.width() == before
+            assert window.send_btn.minimumWidth() == before
+        finally:
+            window.close()
+
+    def test_width_is_recomputed_after_a_language_change(self, qapp, mock_config,
+                                                         mock_memory_manager):
+        window = self._window(mock_config, mock_memory_manager, _real_i18n("es"))
+        try:
+            window.i18n.set_language("es")
+            window._apply_language()
+            assert window.send_btn.width() >= window.send_btn.minimumWidth()
+            assert window.send_btn.text() == "Enviar"
+        finally:
+            window.close()
+
+
 class TestMainWindowChatInput:
     """Placeholder y tooltip del input salen de los locales."""
 

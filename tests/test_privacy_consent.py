@@ -2,7 +2,14 @@ from unittest.mock import MagicMock, patch
 
 from PySide6.QtWidgets import QDialog, QLabel, QPushButton, QWidget
 
-from src.gui.windows.privacy_consent import PrivacyConsentDialog
+from src.gui.windows.privacy_consent import (
+    _FALLBACK_ACCEPT, _FALLBACK_DECLINE, PrivacyConsentDialog,
+)
+
+
+def _button_by_text(dialog, text: str) -> QPushButton:
+    """Botón del diálogo cuya etiqueta visible es ``text``."""
+    return next(b for b in dialog.findChildren(QPushButton) if b.text() == text)
 
 
 def test_dialog_is_qdialog(qapp, mock_i18n):
@@ -15,12 +22,23 @@ def test_dialog_is_qdialog(qapp, mock_i18n):
 
 def test_accept_sets_result(qapp, mock_i18n):
     dialog = PrivacyConsentDialog(i18n=mock_i18n)
-    accept_btn = dialog.findChild(QPushButton, "primary")
-    assert accept_btn is not None
+    # El primario ya no lleva objectName (Design.md §2.1): se busca por texto.
+    # Con el i18n de mock la clave "no existe", así que se usa el fallback.
+    accept_btn = _button_by_text(dialog, _FALLBACK_ACCEPT)
     accept_btn.click()
     assert dialog.result_value is True
     assert dialog.result() == QDialog.Accepted
     dialog.close()
+
+
+def test_accept_button_has_no_object_name(qapp, mock_i18n):
+    """El primario se pinta con la regla base de QPushButton, sin variante."""
+    dialog = PrivacyConsentDialog(i18n=mock_i18n)
+    try:
+        assert _button_by_text(dialog, _FALLBACK_ACCEPT).objectName() == ""
+        assert _button_by_text(dialog, _FALLBACK_DECLINE).objectName() == "secondary"
+    finally:
+        dialog.close()
 
 
 def test_decline_sets_result(qapp, mock_i18n):

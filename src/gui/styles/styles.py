@@ -27,6 +27,11 @@ SUCCESS        = "#6DAB8A"
 WARNING        = "#E0A060"
 DANGER         = "#D97070"
 
+# Hover de peligro: sin token propio en Design.md, se declaran aquí para no
+# repetir el hex en cada hoja (Design.md §5.1).
+DANGER_HOVER     = "#C85A5A"
+DANGER_HOVER_DK  = "#C86060"
+
 # ── Tokens modo oscuro ────────────────────────────────────────────────────────
 BG_WINDOW_DK      = "#0F0F1A"
 BG_SURFACE_DK     = "#1A1A28"
@@ -50,6 +55,21 @@ BORDER_FOCUS_DK   = "#9198E0"
 SUCCESS_DK        = "#7DC49A"
 WARNING_DK        = "#E8B870"
 DANGER_DK         = "#E07878"
+
+# ── Burbujas de voz (speech_bubble): colores sin token equivalente ───────────
+# Design.md §5.1 prohíbe hex repartidos por otros módulos: cada valor que no
+# tiene token se declara UNA sola vez aquí y se consume por nombre.
+BUBBLE_DARK_TEXT          = "#cdd6f4"   # texto sobre fondo oscuro
+BUBBLE_DARK_INPUT_BG      = "#2B2B3D"   # fondo del input inline (estilo dark)
+BUBBLE_DARK_INPUT_BORDER  = "#494A44"   # borde del input inline (estilo dark)
+BUBBLE_FLAT_TEXT          = "#22242C"   # texto sobre fondo claro plano
+BUBBLE_FLAT_INPUT_BORDER  = "#CDD2DE"   # borde del input inline (estilo flat)
+BUBBLE_ROUND_TEXT         = "#23252E"   # texto sobre fondo claro redondo
+BUBBLE_ROUND_INPUT_BORDER = "#C6CADC"   # borde del input inline (estilo round)
+BUBBLE_COMIC_INPUT_BG     = "#F0F0F8"   # fondo del input inline (estilo comic)
+
+# ── Tipografía (Design.md §1.2) ──────────────────────────────────────────────
+FONT_FAMILY = '"Segoe UI", "Inter", "Helvetica Neue", Arial, sans-serif'
 
 # ── Generador de QSS por tema ──────────────────────────────────────────────────
 def _build_main_qss(c: dict) -> str:
@@ -132,25 +152,6 @@ QPushButton:hover {{
 }}
 QPushButton:pressed {{
     background-color: {c["accent_pressed"]};
-}}
-
-QPushButton#primary {{
-    background-color: {c["accent"]};
-    color: {c["text_on_accent"]};
-    border: 2px solid {c["accent"]};
-    border-radius: 8px;
-    padding: 7px 18px;
-    font-size: 13px;
-    font-weight: 700;
-    min-width: 70px;
-}}
-QPushButton#primary:hover {{
-    background-color: {c["accent_hover"]};
-    border-color: {c["accent_hover"]};
-}}
-QPushButton#primary:pressed {{
-    background-color: {c["accent_pressed"]};
-    border-color: {c["accent_pressed"]};
 }}
 
 QPushButton:disabled {{
@@ -569,7 +570,7 @@ _LIGHT_TOKENS = {
     "success":        SUCCESS,
     "warning":        WARNING,
     "danger":         DANGER,
-    "danger_hover":   "#C85A5A",
+    "danger_hover":   DANGER_HOVER,
     "tooltip_bg":     TEXT_PRIMARY,
     "tooltip_fg":     BG_SURFACE,
     "tooltip_border": "none",
@@ -594,7 +595,7 @@ _DARK_TOKENS = {
     "success":        SUCCESS_DK,
     "warning":        WARNING_DK,
     "danger":         DANGER_DK,
-    "danger_hover":   "#C86060",
+    "danger_hover":   DANGER_HOVER_DK,
     "tooltip_bg":     BG_HOVER_DK,
     "tooltip_fg":     TEXT_PRIMARY_DK,
     "tooltip_border": "1px solid " + BORDER_DK,
@@ -695,3 +696,157 @@ def get_style_set(theme: str = "light") -> dict:
         "dialog": DIALOG_STYLE,
         "overlay_menu": OVERLAY_MENU_STYLE,
     }
+
+
+# ── Hojas por componente ─────────────────────────────────────────────────────
+# Design.md §5.1: los módulos de GUI NO construyen QSS a mano. Estas funciones
+# son la fuente única para el chat del panel principal, las burbujas de
+# mensaje, las burbujas de voz y el preview de sprites.
+
+
+def _theme_tokens(theme: str) -> dict:
+    """Devuelve el diccionario de tokens del tema pedido (claro por defecto)."""
+    return _DARK_TOKENS if theme == "dark" else _LIGHT_TOKENS
+
+
+def chat_frame_qss(theme: str) -> str:
+    """Marco del área de chat (``ChatWidget``) con el área de desplazamiento.
+
+    :param theme: ``"dark"`` para el tema oscuro; cualquier otro valor, claro.
+    :return: hoja QSS lista para ``ChatWidget.setStyleSheet``.
+    """
+    t = _theme_tokens(theme)
+    return f"""
+ChatWidget {{
+    background-color: {t["bg_window"]};
+    border: 1.5px solid {t["border"]};
+    border-radius: 12px;
+}}
+QScrollArea {{
+    border: none;
+    background: transparent;
+}}
+"""
+
+
+# Fondo y radio por rol (Design.md §2.3). Un rol desconocido se pinta como
+# mensaje de sistema, igual que hacía el palé por defecto del widget.
+_BUBBLE_BG_TOKEN = {
+    "user":      "accent_light",
+    "assistant": "bg_surface",
+    "system":    "bg_system_msg",
+}
+
+_BUBBLE_RADII = {
+    "user":      "12px 12px 4px 12px",
+    "assistant": "12px 12px 12px 4px",
+    "system":    "8px",
+}
+
+
+def chat_bubble_frame_qss(role: str, theme: str) -> str:
+    """Pinta el marco de una burbuja de chat (``MessageBubble``).
+
+    :param role: ``"user"``, ``"assistant"`` o ``"system"``.
+    :param theme: ``"dark"`` para el tema oscuro; cualquier otro valor, claro.
+    :return: hoja QSS para el ``QFrame`` de la burbuja.
+    """
+    t      = _theme_tokens(theme)
+    bg_key = _BUBBLE_BG_TOKEN.get(role, "bg_system_msg")
+    bg     = t[bg_key]
+    # Solo el asistente lleva borde: el usuario es relleno liso y el sistema
+    # es una pastilla centrada (Design.md §2.3).
+    border = f"    border: 1px solid {t['border']};\n" if role == "assistant" else ""
+    radius = _BUBBLE_RADII.get(role, "8px")
+    return (
+        "MessageBubble {\n"
+        f"    background-color: {bg};\n"
+        f"{border}"
+        f"    border-radius: {radius};\n"
+        "}\n"
+    )
+
+
+def chat_bubble_label_qss(role: str, theme: str) -> str:
+    """Pinta el texto de una burbuja de chat (``QLabel`` interno).
+
+    Los mensajes de sistema usan el tamaño pequeño de Design.md §1.2 (11px);
+    usuario y asistente mantienen el tamaño base (13px).
+
+    :param role: ``"user"``, ``"assistant"`` o ``"system"``.
+    :param theme: ``"dark"`` para el tema oscuro; cualquier otro valor, claro.
+    :return: hoja QSS para la etiqueta de la burbuja.
+    """
+    t         = _theme_tokens(theme)
+    is_system = role not in ("user", "assistant")
+    color     = t["text_secondary"] if is_system else t["text_primary"]
+    font_size = "11px" if is_system else "13px"
+    return (
+        f"color: {color}; background: transparent; border: none; "
+        f"font-family: {FONT_FAMILY}; font-size: {font_size};"
+    )
+
+
+# Receta visual por estilo de burbuja de voz (speech_bubble):
+# (fondo RGB, borde RGB, grosor de borde, color de texto, peso, radio).
+_BUBBLE_STYLE_RECIPES: dict[
+    str, tuple[tuple[int, int, int], tuple[int, int, int], float, str, str, float]
+] = {
+    "dark":  ((30, 30, 46), (49, 50, 68), 1.5, BUBBLE_DARK_TEXT, "400", 12.0),
+    "comic": ((255, 255, 255), (30, 30, 48), 2.5, TEXT_PRIMARY, "600", 12.0),
+    "flat":  ((245, 246, 250), (205, 210, 222), 1.0, BUBBLE_FLAT_TEXT, "400", 4.0),
+    "round": ((252, 252, 255), (198, 202, 220), 1.5, BUBBLE_ROUND_TEXT, "400", 20.0),
+}
+
+# Paleta del input inline (fondo, texto, borde) por estilo de burbuja. Los
+# valores con token equivalente apuntan al token; el resto son las constantes
+# declaradas arriba.
+_BUBBLE_INPUT_PALETTES: dict[str, tuple[str, str, str]] = {
+    "dark":  (BUBBLE_DARK_INPUT_BG, BUBBLE_DARK_TEXT, BUBBLE_DARK_INPUT_BORDER),
+    "comic": (BUBBLE_COMIC_INPUT_BG, TEXT_PRIMARY, TEXT_PRIMARY),
+    "flat":  (BG_SURFACE, BUBBLE_FLAT_TEXT, BUBBLE_FLAT_INPUT_BORDER),
+    "round": (BG_SURFACE, BUBBLE_ROUND_TEXT, BUBBLE_ROUND_INPUT_BORDER),
+}
+
+
+def bubble_style_recipe(style: str) -> tuple[
+    tuple[int, int, int], tuple[int, int, int], float, str, str, float
+]:
+    """Receta visual de un estilo de burbuja de voz.
+
+    Los colores se devuelven como tuplas ``(r, g, b)`` para quien los pinte
+    con ``QColor`` y como hex de token para quien los escriba en QSS.
+
+    :param style: ``"dark"``, ``"comic"``, ``"flat"`` o ``"round"``.
+    :return: ``(fondo, borde, grosor, texto, peso, radio)``. Un estilo
+        desconocido devuelve la receta ``"dark"``.
+    """
+    return _BUBBLE_STYLE_RECIPES.get(style, _BUBBLE_STYLE_RECIPES["dark"])
+
+
+def bubble_input_palette(style: str) -> tuple[str, str, str]:
+    """Paleta del input inline de una burbuja de voz.
+
+    :param style: ``"dark"``, ``"comic"``, ``"flat"`` o ``"round"``.
+    :return: tupla ``(fondo, texto, borde)`` en hex. Un estilo desconocido
+        devuelve la paleta ``"dark"``.
+    """
+    return _BUBBLE_INPUT_PALETTES.get(style, _BUBBLE_INPUT_PALETTES["dark"])
+
+
+def sprite_preview_qss(theme: str) -> str:
+    """Marco del preview de sprites del diálogo de Ajustes.
+
+    El marco anterior usaba un gris fijo de 1px, invisible sobre el fondo del
+    tema oscuro; ahora se pinta con el token de borde de cada tema y el radio
+    medio de Design.md §1.3.
+
+    :param theme: ``"dark"`` para el tema oscuro; cualquier otro valor, claro.
+    :return: hoja QSS para el ``QLabel`` del preview.
+    """
+    border = BORDER_DK if theme == "dark" else BORDER
+    return (
+        "background: transparent; "
+        f"border: 1.5px solid {border}; "
+        "border-radius: 8px;"
+    )

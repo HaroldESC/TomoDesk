@@ -26,7 +26,7 @@ from src.config.paths import (
 from src.context.context_pack import ContextPackManager
 from src.gui.managers.window_sitting import FALLBACK_POSITIONS, TARGET_MODES
 from src.gui.sprites.sprite_loader import SpriteLoader
-from src.gui.styles.styles import get_style_set
+from src.gui.styles.styles import get_style_set, sprite_preview_qss
 from src.gui.utils import force_taskbar_entry
 from src.gui.widgets.speech_bubble import BubbleStyle
 from src.llm.llama_cpp import is_llama_cpp_available
@@ -36,6 +36,29 @@ from src.platform import PlatformCapabilities, get_platform
 logger = logging.getLogger(__name__)
 _creds = CredentialManager()
 _BUBBLE_STYLE_VALUES = frozenset(s.value for s in BubbleStyle)
+
+# Etiqueta traducible de cada estilo de burbuja: el combo muestra texto, no
+# la clave cruda que se guarda en ``ui.bubble_style``.
+_BUBBLE_STYLE_LABEL_KEY: dict[str, str] = {
+    style.value: f"dialogs.settings.bubble_style_{style.value}"
+    for style in BubbleStyle
+}
+
+# Valores que acepta ``ui.overlay_default_position``.
+_OVERLAY_POSITION_LABEL_KEY: dict[str, str] = {
+    "bottom-right": "dialogs.settings.position_bottom_right",
+    "bottom-left": "dialogs.settings.position_bottom_left",
+    "top-right": "dialogs.settings.position_top_right",
+    "top-left": "dialogs.settings.position_top_left",
+    "center": "dialogs.settings.position_center",
+}
+
+# Idiomas ofrecidos en el combo: texto traducido + valor de configuracion.
+_LANGUAGE_LABEL_KEY: dict[str, str] = {
+    "auto": "dialogs.settings.language_auto",
+    "en": "dialogs.settings.language_en",
+    "es": "dialogs.settings.language_es",
+}
 
 
 class _ModelDownloadWorker(QThread):
@@ -175,13 +198,20 @@ class SettingsDialog(QDialog):
         ui = self.config.get("ui", {})
 
         self.ui_lang = QComboBox()
-        self.ui_lang.addItems(["auto", "en", "es"])
-        self.ui_lang.setCurrentText(ui.get("language", "auto"))
+        # Texto traducido a la vista, valor de configuracion en el userData.
+        for value, label_key in _LANGUAGE_LABEL_KEY.items():
+            self.ui_lang.addItem(self.i18n.t(label_key), value)
+        self.ui_lang.setCurrentIndex(
+            max(0, self.ui_lang.findData(ui.get("language", "auto")))
+        )
         self._add_row(layout, self.i18n.t("dialogs.settings.language"), self.ui_lang)
 
         self.ui_theme = QComboBox()
-        self.ui_theme.addItems(["light", "dark"])
-        self.ui_theme.setCurrentText(ui.get("theme", "light"))
+        self.ui_theme.addItem(self.i18n.t("dialogs.settings.theme_light"), "light")
+        self.ui_theme.addItem(self.i18n.t("dialogs.settings.theme_dark"), "dark")
+        self.ui_theme.setCurrentIndex(
+            max(0, self.ui_theme.findData(ui.get("theme", "light")))
+        )
         self._add_row(layout, self.i18n.t("dialogs.settings.theme"), self.ui_theme)
 
         self.ui_char_size = self._labeled_slider(
@@ -190,11 +220,12 @@ class SettingsDialog(QDialog):
         )
 
         self.ui_overlay_default = QComboBox()
-        self.ui_overlay_default.addItems([
-            "bottom-right", "bottom-left", "top-right", "top-left", "center",
-        ])
-        self.ui_overlay_default.setCurrentText(
-            ui.get("overlay_default_position", "bottom-right"),
+        for value, label_key in _OVERLAY_POSITION_LABEL_KEY.items():
+            self.ui_overlay_default.addItem(self.i18n.t(label_key), value)
+        self.ui_overlay_default.setCurrentIndex(
+            max(0, self.ui_overlay_default.findData(
+                ui.get("overlay_default_position", "bottom-right")
+            ))
         )
         self._add_row(layout, self.i18n.t("dialogs.settings.overlay_default_position"),
                       self.ui_overlay_default)
@@ -203,6 +234,13 @@ class SettingsDialog(QDialog):
             layout, self.i18n.t("dialogs.settings.overlay_opacity"),
             0, 100, int(ui.get("overlay_opacity", 1.0) * 100),
         )
+
+        self.ui_status_icons = QCheckBox(self.i18n.t("dialogs.settings.status_icons"))
+        self.ui_status_icons.setChecked(bool(ui.get("status_icons", False)))
+        self.ui_status_icons.setToolTip(
+            self.i18n.t("dialogs.settings.status_icons_tip")
+        )
+        layout.addWidget(self.ui_status_icons)
 
     def _build_appearance_bubble(self, layout):
         ui = self.config.get("ui", {})
@@ -214,11 +252,17 @@ class SettingsDialog(QDialog):
         self.ui_bubble_style = QComboBox()
         # The list is derived from the enum so it can never offer a value
         # the widget would reject at startup.
-        self.ui_bubble_style.addItems([s.value for s in BubbleStyle])
+        for style in BubbleStyle:
+            label_key = _BUBBLE_STYLE_LABEL_KEY.get(
+                style.value, f"dialogs.settings.bubble_style_{style.value}"
+            )
+            self.ui_bubble_style.addItem(self.i18n.t(label_key), style.value)
         current = ui.get("bubble_style", "comic")
         if current not in _BUBBLE_STYLE_VALUES:
             current = BubbleStyle.DARK.value
-        self.ui_bubble_style.setCurrentText(current)
+        self.ui_bubble_style.setCurrentIndex(
+            max(0, self.ui_bubble_style.findData(current))
+        )
         self._add_row(layout, self.i18n.t("dialogs.settings.bubble_style"), self.ui_bubble_style)
 
         self.ui_bubble_lines = QSpinBox()
@@ -258,6 +302,7 @@ class SettingsDialog(QDialog):
         self._add_row(layout, self.i18n.t("dialogs.settings.hints_delay"), self.ui_hints_delay)
 
         reset_btn = QPushButton(self.i18n.t("dialogs.settings.hints_reset"))
+        reset_btn.setObjectName("flat")
         reset_btn.clicked.connect(self._on_reset_hints)
         layout.addWidget(reset_btn)
 
@@ -300,6 +345,8 @@ class SettingsDialog(QDialog):
         left_col.addWidget(self.sprite_list)
 
         self.sprite_delete_btn = QPushButton(self.i18n.t("dialogs.settings.sprite_delete"))
+        # Borrar un sprite es destructivo: va en rojo, no como accion plana.
+        self.sprite_delete_btn.setObjectName("danger")
         sel_name = self.sprite_list.currentItem()
         self.sprite_delete_btn.setEnabled(
             sel_name is not None and sel_name.text() != "default"
@@ -313,7 +360,7 @@ class SettingsDialog(QDialog):
         preview_col = QVBoxLayout()
         self.sprite_preview = QLabel()
         self.sprite_preview.setFixedSize(150, 150)
-        self.sprite_preview.setStyleSheet("background: transparent; border: 1px solid #555;")
+        self.sprite_preview.setStyleSheet(sprite_preview_qss(self._preview_theme()))
         preview_col.addWidget(self.sprite_preview)
 
         self.ui_sprite_custom = QCheckBox(self.i18n.t("dialogs.settings.sprite_custom"))
@@ -400,6 +447,7 @@ class SettingsDialog(QDialog):
         self.pack_directory = QLineEdit(packs.get("directory", "data/personality_packs"))
         path_row.addWidget(self.pack_directory, stretch=1)
         browse_btn = QPushButton(self.i18n.t("dialogs.settings.browse"))
+        browse_btn.setObjectName("flat")
         browse_btn.clicked.connect(self._on_browse_pack_dir)
         path_row.addWidget(browse_btn)
         path_widget = QWidget()
@@ -408,10 +456,12 @@ class SettingsDialog(QDialog):
 
         btn_row = QHBoxLayout()
         reload_btn = QPushButton(self.i18n.t("dialogs.settings.pack_reload"))
+        reload_btn.setObjectName("flat")
         reload_btn.clicked.connect(self._on_reload_packs)
         btn_row.addWidget(reload_btn)
 
         self.pack_delete_btn = QPushButton(self.i18n.t("dialogs.settings.pack_delete"))
+        self.pack_delete_btn.setObjectName("danger")
         self.pack_delete_btn.setEnabled(self.pack_active.currentIndex() >= 0)
         self.pack_delete_btn.clicked.connect(self._on_delete_pack)
         self.pack_active.currentIndexChanged.connect(
@@ -470,6 +520,7 @@ class SettingsDialog(QDialog):
         self.ctx_directory = QLineEdit(context.get("directory", "data/context_packs"))
         path_row.addWidget(self.ctx_directory, stretch=1)
         browse_btn = QPushButton(self.i18n.t("dialogs.settings.browse"))
+        browse_btn.setObjectName("flat")
         browse_btn.clicked.connect(self._on_browse_context_dir)
         path_row.addWidget(browse_btn)
         path_widget = QWidget()
@@ -485,10 +536,12 @@ class SettingsDialog(QDialog):
 
         btn_row = QHBoxLayout()
         reload_btn = QPushButton(self.i18n.t("dialogs.settings.context_reload"))
+        reload_btn.setObjectName("flat")
         reload_btn.clicked.connect(self._on_reload_context_packs)
         btn_row.addWidget(reload_btn)
 
         self.context_pack_delete_btn = QPushButton(self.i18n.t("dialogs.settings.context_delete"))
+        self.context_pack_delete_btn.setObjectName("danger")
         self.context_pack_delete_btn.setEnabled(False)
         self.context_pack_delete_btn.clicked.connect(self._on_delete_context_pack)
         self.context_pack_list.currentItemChanged.connect(
@@ -632,6 +685,7 @@ class SettingsDialog(QDialog):
         self.llama_path = QLineEdit(llm_cpp.get("model_path", ""))
         path_row.addWidget(self.llama_path, stretch=1)
         browse_btn = QPushButton(self.i18n.t("dialogs.settings.browse"))
+        browse_btn.setObjectName("flat")
         browse_btn.clicked.connect(self._on_browse_llama_path)
         path_row.addWidget(browse_btn)
         path_widget = QWidget()
@@ -648,6 +702,7 @@ class SettingsDialog(QDialog):
         self.llama_download_btn = QPushButton(
             self.i18n.t("dialogs.settings.download_model")
         )
+        self.llama_download_btn.setObjectName("flat")
         self.llama_download_btn.clicked.connect(self._on_download_model)
         dl_row.addWidget(self.llama_download_btn, stretch=1)
         dl_widget = QWidget()
@@ -712,12 +767,23 @@ class SettingsDialog(QDialog):
             if total and total > 0:
                 progress.setRange(0, 100)
                 progress.setValue(int(done * 100 / total))
+                pct = int(done * 100 / total)
                 progress.setLabelText(
-                    f"{int(done * 100 / total)}% ({done}/{total} bytes)"
+                    f"{pct}% "
+                    + self.i18n.t(
+                        "dialogs.settings.download_bytes", done=done, total=total
+                    )
                 )
             else:
                 progress.setRange(0, 0)
-                progress.setLabelText(f"{done} bytes")
+                # Sin Content-Length no hay total que ensenar: se muestra 0 en
+                # lugar de inventar un numero (la barra ya es indeterminada).
+                progress.setLabelText(
+                    self.i18n.t(
+                        "dialogs.settings.download_bytes",
+                        done=done, total=total or 0,
+                    )
+                )
 
         def _on_done(dest):
             progress.setValue(100)
@@ -834,6 +900,7 @@ class SettingsDialog(QDialog):
         layout.addWidget(self.mem_include_notes)
 
         clear_btn = QPushButton(self.i18n.t("dialogs.settings.memory_clear_all"))
+        clear_btn.setObjectName("danger")
         clear_btn.clicked.connect(self._on_clear_memories)
         layout.addWidget(clear_btn)
 
@@ -844,6 +911,7 @@ class SettingsDialog(QDialog):
         self.mem_chroma_path = QLineEdit(mem.get("chroma_persist_path", "./chroma_db"))
         path_row.addWidget(self.mem_chroma_path, stretch=1)
         browse_btn = QPushButton(self.i18n.t("dialogs.settings.browse"))
+        browse_btn.setObjectName("flat")
         browse_btn.clicked.connect(self._on_browse_chroma_path)
         path_row.addWidget(browse_btn)
         path_widget = QWidget()
@@ -867,6 +935,7 @@ class SettingsDialog(QDialog):
                       self.mem_embed_model)
 
         reindex_btn = QPushButton(self.i18n.t("dialogs.settings.memory_reindex"))
+        reindex_btn.setObjectName("flat")
         reindex_btn.clicked.connect(self._on_reindex_notes)
         layout.addWidget(reindex_btn)
 
@@ -1079,14 +1148,17 @@ class SettingsDialog(QDialog):
 
         btn_row = QHBoxLayout()
         compact_btn = QPushButton(self.i18n.t("dialogs.settings.db_compact"))
+        compact_btn.setObjectName("flat")
         compact_btn.clicked.connect(self._on_compact_db)
         btn_row.addWidget(compact_btn)
 
         export_btn = QPushButton(self.i18n.t("dialogs.settings.db_export"))
+        export_btn.setObjectName("flat")
         export_btn.clicked.connect(self._on_export_memories)
         btn_row.addWidget(export_btn)
 
         import_btn = QPushButton(self.i18n.t("dialogs.settings.db_import"))
+        import_btn.setObjectName("flat")
         import_btn.clicked.connect(self._on_import_memories)
         btn_row.addWidget(import_btn)
 
@@ -1106,6 +1178,7 @@ class SettingsDialog(QDialog):
         layout.addWidget(self.debug_prompts)
 
         open_log_btn = QPushButton(self.i18n.t("dialogs.settings.log_open_folder"))
+        open_log_btn.setObjectName("flat")
         open_log_btn.clicked.connect(self._on_open_logs_folder)
         layout.addWidget(open_log_btn)
 
@@ -1121,10 +1194,25 @@ class SettingsDialog(QDialog):
         layout.addWidget(about_text)
 
         tutorial_btn = QPushButton(self.i18n.t("dialogs.settings.tutorial_play"))
+        tutorial_btn.setObjectName("flat")
         tutorial_btn.clicked.connect(self._on_play_tutorial)
         layout.addWidget(tutorial_btn)
 
     # ── sprite helpers ───────────────────────────────────────────────────────
+
+    def _preview_theme(self) -> str:
+        """Tema con el que se pinta el marco del preview de sprites.
+
+        Se toma del combo de tema (la pagina de Apariencia se construye
+        antes que la de Packs) y se cae en la configuracion si todavia no
+        existe, para no depender del orden de construccion.
+        """
+        combo = getattr(self, "ui_theme", None)
+        if combo is not None:
+            theme = combo.currentData()
+            if theme:
+                return str(theme)
+        return str(self.config.get("ui", {}).get("theme", "light"))
 
     def _on_sprite_selected(self, name: str):
         if name:
@@ -1476,7 +1564,7 @@ class SettingsDialog(QDialog):
 
         btn_layout = QHBoxLayout()
         save_btn = QPushButton(self.i18n.t("dialogs.settings.save"))
-        save_btn.setObjectName("primary")
+        # Primario: sin objectName (Design.md §2.1).
         save_btn.clicked.connect(self._save_settings)
         btn_layout.addWidget(save_btn)
 
@@ -1556,7 +1644,9 @@ class SettingsDialog(QDialog):
         if not self._validate_mind():
             return
 
-        new_lang = self.ui_lang.currentText()
+        new_lang = self.ui_lang.currentData()
+        if not new_lang:
+            new_lang = "auto"
         old_lang = self.i18n.get_current_language()
 
         self._save_appearance()
@@ -1583,25 +1673,39 @@ class SettingsDialog(QDialog):
 
     def _save_appearance(self):
         ui = self.config.setdefault("ui", {})
-        new_lang = self.ui_lang.currentText()
+        new_lang = self.ui_lang.currentData() or "auto"
         ui["language"] = new_lang
         ui["language_set"] = new_lang != "auto"
-        ui["theme"] = self.ui_theme.currentText()
+        ui["theme"] = self.ui_theme.currentData() or "light"
         ui["character_size"] = self.ui_char_size.value()
         ui["overlay_enabled"] = self.ui_overlay.isChecked()
-        ui["overlay_default_position"] = self.ui_overlay_default.currentText()
+        ui["overlay_default_position"] = (
+            self.ui_overlay_default.currentData() or "bottom-right"
+        )
         ui["overlay_opacity"] = self.ui_overlay_opacity.value() / 100.0
-        ui["bubble_style"] = self.ui_bubble_style.currentText()
+        ui["bubble_style"] = self.ui_bubble_style.currentData() or "comic"
         ui["bubble_max_lines"] = self.ui_bubble_lines.value()
         ui["bubble_typewriter_interval_ms"] = self.ui_bubble_type.value()
         fade_val = self.ui_bubble_fade.value()
         ui["bubble_fade_delay_ms"] = fade_val * 1000 if fade_val > 0 else 0
+        ui["status_icons"] = self.ui_status_icons.isChecked()
 
         hints = ui.setdefault("hints", {})
         hints["enabled"] = self.ui_hints_enabled.isChecked()
         hints["delay_ms"] = self.ui_hints_delay.value()
 
         self._push_overlay_config(ui)
+        self._push_status_icons(ui)
+
+    def _push_status_icons(self, ui):
+        """Aplica el ajuste de iconos a la barra de estado en caliente.
+
+        Mismo patron que ``_push_overlay_config``: si la ventana dueña no
+        expone el metodo (tests, diálogos sueltos) no pasa nada.
+        """
+        setter = getattr(self.parent(), "set_status_icons_enabled", None)
+        if callable(setter):
+            setter(bool(ui.get("status_icons", False)))
 
     def _push_overlay_config(self, ui):
         """Empuja los ajustes de apariencia (burbuja + opacidad) al overlay vivo.
@@ -1785,6 +1889,10 @@ class SettingsDialog(QDialog):
         parent = self.parent()
         if parent and hasattr(parent, "apply_theme"):
             parent.apply_theme(new_theme, character_size=new_size)
+
+        # El marco del preview se pinta con el token de borde del tema.
+        if hasattr(self, "sprite_preview"):
+            self.sprite_preview.setStyleSheet(sprite_preview_qss(new_theme))
 
         sprite_cfg = ui.get("sprite", {})
         if sprite_cfg.get("use_custom"):

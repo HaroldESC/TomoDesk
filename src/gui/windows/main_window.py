@@ -4,13 +4,14 @@ import os
 import threading
 
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QFontMetrics
 from PySide6.QtWidgets import (
     QApplication, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
     QMenuBar, QMessageBox, QPushButton, QStatusBar, QVBoxLayout, QWidget,
 )
 
 from src.system.commands import handle_command, format_proactive_status
+from src.gui.styles import icons
 from src.gui.widgets.chat_widget import ChatWidget
 from src.gui.windows.memories_dialog import MemoriesDialog
 from src.gui.windows.notes_dialog import NotesDialog
@@ -25,6 +26,10 @@ logger = logging.getLogger(__name__)
 class MainWindow(QMainWindow):
     _assistant_message_signal = Signal(str)
     _system_message_signal = Signal(str)
+
+    #: Iconos en la barra de estado (``ui.status_icons``), desactivados por
+    #: defecto. Se fija por instancia en ``_setup_status_bar``.
+    _status_icons_enabled: bool = False
 
     def __init__(
         self,
@@ -158,12 +163,32 @@ class MainWindow(QMainWindow):
         self.send_btn = QPushButton(self.i18n.t("chat.send_button"))
         self.send_btn.clicked.connect(self._send_message)
         input_layout.addWidget(self.send_btn)
+        self._fix_send_button_width()
 
         layout.addLayout(input_layout)
+
+    def _fix_send_button_width(self):
+        """Da al boton de enviar un ancho fijo, el de su texto mas ancho.
+
+        El boton pasa a "Pensando..." mientras llega la respuesta: si el
+        ancho lo decide el texto, el input de al lado se encoge y ensancha
+        a cada mensaje. Se mide el mas ancho de los dos textos y se aplica
+        como ancho minimo y fijo.
+        """
+        metrics = QFontMetrics(self.send_btn.font())
+        texts = (self.i18n.t("chat.send_button"), self.i18n.t("chat.thinking"))
+        widest = max(metrics.horizontalAdvance(text) for text in texts)
+        # ``padding: 7px 18px`` del QSS + holgura para el borde redondeado.
+        width = max(70, widest + 36 + 4)
+        self.send_btn.setFixedWidth(width)
 
     def _setup_status_bar(self):
         self.status = QStatusBar()
         self.setStatusBar(self.status)
+
+        self._status_icons_enabled = bool(
+            self.config.get("ui", {}).get("status_icons", False)
+        )
 
         self.mood_label = QLabel("")
         self.mood_label.setStyleSheet("padding-right: 8px;")
@@ -173,6 +198,15 @@ class MainWindow(QMainWindow):
         self._mode_label.setStyleSheet("padding-left: 4px;")
         self.status.addPermanentWidget(self._mode_label)
 
+        self._update_status_message()
+
+    def set_status_icons_enabled(self, enabled: bool):
+        """Activa o desactiva en caliente los iconos de la barra de estado.
+
+        Lo llama el dialogo de Ajustes al guardar Apariencia, para que el
+        cambio se vea sin reiniciar la aplicacion.
+        """
+        self._status_icons_enabled = bool(enabled)
         self._update_status_message()
 
     def _update_status_message(self):
@@ -191,19 +225,28 @@ class MainWindow(QMainWindow):
 
         sleep_timeout = self.config.get("ui", {}).get("sleep_timeout_seconds", 300)
         if idle_sec > sleep_timeout:
+            status_key = "sleeping"
             msg = self.i18n.t("status.sleeping", name=name)
         elif state["connection"] < 0.2:
+            status_key = "distant"
             msg = self.i18n.t("status.distant", name=name)
         elif state["energy"] < 0.3:
+            status_key = "tired"
             msg = self.i18n.t("status.tired", name=name)
         elif state["happiness"] > 0.8:
+            status_key = "radiant"
             msg = self.i18n.t("status.radiant", name=name)
         elif state["curiosity"] > 0.7:
+            status_key = "curious"
             msg = self.i18n.t("status.curious", name=name)
         else:
+            status_key = "listening"
             msg = self.i18n.t("status.listening", name=name)
 
-        self.mood_label.setText(msg)
+        # Sin iconos activados el texto es exactamente el de antes: ni un
+        # espacio inicial que desalinee la barra.
+        icon_prefix = icons.status_icon(status_key) if self._status_icons_enabled else ""
+        self.mood_label.setText(f"{icon_prefix} {msg}" if icon_prefix else msg)
         self.mood_label.setToolTip(
             "\n".join(
                 self.i18n.t(f"status.mood_{key}", value=state[key])
@@ -216,11 +259,19 @@ class MainWindow(QMainWindow):
                 enabled = self.proactive_engine.policy.is_enabled()
                 focus = self.proactive_engine.policy.focus_mode
                 if focus:
-                    self._mode_label.setText(self.i18n.t("status.focus_mode_indicator"))
+                    mode_key = "focus"
+                    mode_text = self.i18n.t("status.focus_mode_indicator")
                 elif not enabled:
-                    self._mode_label.setText(self.i18n.t("status.dnd_mode_indicator"))
+                    mode_key = "dnd"
+                    mode_text = self.i18n.t("status.dnd_mode_indicator")
                 else:
-                    self._mode_label.setText("")
+                    mode_key = "proactive"
+                    mode_text = ""
+                mode_icon = (
+                    icons.icon("mode", mode_key) if self._status_icons_enabled else ""
+                )
+                self._mode_label.setText(f"{mode_icon} {mode_text}".strip()
+                                         if mode_icon else mode_text)
             except Exception:
                 pass
 
@@ -466,6 +517,7 @@ class MainWindow(QMainWindow):
         self.input.setPlaceholderText(self.i18n.t("chat.input_placeholder"))
         self.input.setToolTip(self.i18n.t("chat.commands_tooltip"))
         self.send_btn.setText(self.i18n.t("chat.send_button"))
+        self._fix_send_button_width()
         self.toggle_overlay_action.setText(self.i18n.t("menu.char.show_overlay"))
         self.focus_mode_action.setText(self.i18n.t("menu.char.focus_mode"))
         self._clear_chat_action.setText(self.i18n.t("menu.char.clear_chat"))

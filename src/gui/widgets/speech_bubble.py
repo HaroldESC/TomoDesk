@@ -7,6 +7,8 @@ from PySide6.QtWidgets import (
     QApplication, QLineEdit, QTextEdit, QVBoxLayout, QWidget,
 )
 
+from src.gui.styles import styles
+
 logger = logging.getLogger(__name__)
 
 _TAIL_H = 13
@@ -25,11 +27,18 @@ class BubbleStyle(Enum):
 
 
 # Visual recipe per style: (bg, border, border_width, text, font_weight, radius)
+def _recipe_for(style: BubbleStyle) -> tuple:
+    """Convierte la receta de ``styles`` (RGB en tuplas) en ``QColor``.
+
+    Así los colores de las burbujas se declaran una sola vez en el sistema de
+    diseño (Design.md §5.1) y aquí solo se adaptan al pincel de Qt.
+    """
+    bg, border, width, text, weight, radius = styles.bubble_style_recipe(style.value)
+    return QColor(*bg), QColor(*border), width, text, weight, radius
+
+
 _STYLE_RECIPES: dict[BubbleStyle, tuple] = {
-    BubbleStyle.DARK:  (QColor(30, 30, 46),  QColor(49, 50, 68),  1.5, "#cdd6f4", "400", 12.0),
-    BubbleStyle.COMIC: (QColor(255, 255, 255), QColor(30, 30, 48), 2.5, "#1E1E30", "600", 12.0),
-    BubbleStyle.FLAT:  (QColor(245, 246, 250), QColor(205, 210, 222), 1.0, "#22242C", "400", 4.0),
-    BubbleStyle.ROUND: (QColor(252, 252, 255), QColor(198, 202, 220), 1.5, "#23252E", "400", 20.0),
+    bubble_style: _recipe_for(bubble_style) for bubble_style in BubbleStyle
 }
 
 _STYLE_NAMES = frozenset(s.value for s in _STYLE_RECIPES)
@@ -92,9 +101,6 @@ class SpeechBubble(QWidget):
         self._layout.addWidget(self.input_edit)
 
         self._flipped = False
-        self._bg_color     = QColor(30, 30, 46)
-        self._border_color = QColor(49, 50, 68)
-        self._border_width = 1.5
         self._apply_style()
         self._update_margins()
 
@@ -116,6 +122,14 @@ class SpeechBubble(QWidget):
         self.setMaximumWidth(dynamic_max)
 
     def _apply_style(self):
+        """
+        Aplica la receta visual del estilo y la geometría de Design.md §3.3
+        al input inline.
+
+        La paleta de colores del input sigue siendo la de cada estilo de
+        burbuja (el oscuro sigue siendo oscuro); lo que se homogeneiza es la
+        geometría: borde 2.5px, radio 8px, padding 5px 10px y peso 600.
+        """
         recipe = _STYLE_RECIPES.get(self.style, _STYLE_RECIPES[BubbleStyle.DARK])
         (
             self._bg_color,
@@ -126,22 +140,7 @@ class SpeechBubble(QWidget):
             self._radius,
         ) = recipe
 
-        if self.style == BubbleStyle.DARK:
-            input_bg   = "#2B2B3D"
-            input_txt  = "#cdd6f4"
-            input_bdr  = "#494A44"
-        elif self.style == BubbleStyle.FLAT:
-            input_bg   = "#FFFFFF"
-            input_txt  = "#22242C"
-            input_bdr  = "#CDD2DE"
-        elif self.style == BubbleStyle.ROUND:
-            input_bg   = "#FFFFFF"
-            input_txt  = "#23252E"
-            input_bdr  = "#C6CADC"
-        else:
-            input_bg   = "#F0F0F8"
-            input_txt  = "#1E1E30"
-            input_bdr  = "#1E1E30"
+        input_bg, input_txt, input_bdr = styles.bubble_input_palette(self.style.value)
 
         self.setStyleSheet(f"""
             QTextEdit {{
@@ -151,7 +150,7 @@ class SpeechBubble(QWidget):
                 margin     : 0px;
                 color      : {text_color};
                 font-size  : 13px;
-                font-family: "Segoe UI", "Inter", "Helvetica Neue", Arial, sans-serif;
+                font-family: {styles.FONT_FAMILY};
                 font-weight: {font_weight};
                 line-height: 1.4;
             }}
@@ -177,14 +176,15 @@ class SpeechBubble(QWidget):
             QLineEdit {{
                 background : {input_bg};
                 color      : {input_txt};
-                border     : 1.5px solid {input_bdr};
-                border-radius: 6px;
-                padding    : 4px 8px;
+                border     : 2.5px solid {input_bdr};
+                border-radius: 8px;
+                padding    : 5px 10px;
                 font-size  : 12px;
-                font-family: "Segoe UI", "Inter", "Helvetica Neue", Arial, sans-serif;
+                font-family: {styles.FONT_FAMILY};
+                font-weight: 600;
             }}
             QLineEdit:focus {{
-                border-color: #7B85D6;
+                border-color: {styles.BORDER_FOCUS};
             }}
         """)
         self.update()

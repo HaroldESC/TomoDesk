@@ -307,6 +307,10 @@ def test_keys_used_by_the_ui_exist():
         used.add(f"dialogs.settings.ws_target_{mode}")
     for pos in ("top_left", "top_right", "bottom_left", "bottom_right"):
         used.add(f"dialogs.settings.ws_fallback_{pos}")
+    # El combo de estilo de burbuja itera el enum: las etiquetas se montan
+    # por variable, igual que los modos de window-sitting.
+    for style in ("dark", "comic", "flat", "round"):
+        used.add(f"dialogs.settings.bubble_style_{style}")
 
     missing = sorted(key for key in used if key not in defined)
     assert not missing, f"claves usadas y no definidas: {missing}"
@@ -318,6 +322,25 @@ NEW_UI_KEYS = [
     "chat.input_placeholder",
     "chat.commands_tooltip",
     "setup.cancelling",
+    # Combos con texto traducido (Fase 2).
+    "dialogs.settings.language_auto",
+    "dialogs.settings.language_en",
+    "dialogs.settings.language_es",
+    "dialogs.settings.theme_light",
+    "dialogs.settings.theme_dark",
+    "dialogs.settings.position_bottom_right",
+    "dialogs.settings.position_bottom_left",
+    "dialogs.settings.position_top_right",
+    "dialogs.settings.position_top_left",
+    "dialogs.settings.position_center",
+    "dialogs.settings.bubble_style_dark",
+    "dialogs.settings.bubble_style_comic",
+    "dialogs.settings.bubble_style_flat",
+    "dialogs.settings.bubble_style_round",
+    # Iconos de la barra de estado y progreso de descarga.
+    "dialogs.settings.status_icons",
+    "dialogs.settings.status_icons_tip",
+    "dialogs.settings.download_bytes",
 ]
 
 

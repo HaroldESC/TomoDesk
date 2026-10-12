@@ -6,6 +6,8 @@ from PySide6.QtCore import QCoreApplication, QRect, QTimer, Qt, Signal
 from PySide6.QtGui import QAction, QColor, QFont, QIcon, QImage, QPainter, QPixmap
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
+from src.gui.styles.styles import ACCENT, TEXT_ON_ACCENT
+
 logger = logging.getLogger(__name__)
 
 
@@ -42,10 +44,10 @@ class TrayIcon(QSystemTrayIcon):
         painter.setRenderHint(QPainter.Antialiasing)
         margin = max(1, size // 16)
         r = size - margin * 2
-        painter.setBrush(QColor("#7B85D6"))
+        painter.setBrush(QColor(ACCENT))
         painter.setPen(Qt.NoPen)
         painter.drawRoundedRect(margin, margin, r, r, r // 4, r // 4)
-        painter.setPen(QColor("#FFFFFF"))
+        painter.setPen(QColor(TEXT_ON_ACCENT))
         inner = r
         font = QFont("Segoe UI", QFont.Bold)
         font.setPixelSize(max(8, round(inner * 0.6)))

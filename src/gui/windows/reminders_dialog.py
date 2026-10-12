@@ -52,7 +52,8 @@ class RemindersDialog(QDialog):
         btn_layout.addWidget(self.add_btn)
 
         self.cancel_btn = QPushButton(self.i18n.t("dialogs.reminders.cancel_selected"))
-        self.cancel_btn.setObjectName("secondary")
+        # Cancelar un recordatorio lo desactiva: es una accion destructiva.
+        self.cancel_btn.setObjectName("danger")
         self.cancel_btn.clicked.connect(self._cancel_reminder)
         btn_layout.addWidget(self.cancel_btn)
 

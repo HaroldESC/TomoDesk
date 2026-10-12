@@ -51,6 +51,7 @@ class NotesDialog(QDialog):
         btn_layout.addWidget(self.delete_btn)
 
         self.new_btn = QPushButton(self.i18n.t("dialogs.notes.new"))
+        self.new_btn.setObjectName("secondary")
         self.new_btn.clicked.connect(self._new_note)
         btn_layout.addWidget(self.new_btn)
 

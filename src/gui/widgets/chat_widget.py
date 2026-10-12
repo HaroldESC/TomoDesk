@@ -5,25 +5,9 @@ from PySide6.QtWidgets import (
 )
 
 from src.gui.styles.styles import (
-    ACCENT_LIGHT, BG_SURFACE, BORDER, BG_SYSTEM_MSG, TEXT_SECONDARY, TEXT_PRIMARY,
-    ACCENT_LIGHT_DK, BG_SURFACE_DK, BORDER_DK, BG_SYSTEM_MSG_DK, TEXT_SECONDARY_DK, TEXT_PRIMARY_DK,
+    chat_bubble_frame_qss, chat_bubble_label_qss, chat_frame_qss,
 )
 
-_USER_BG  = ACCENT_LIGHT
-_ASST_BG  = BG_SURFACE
-_ASST_BDR = BORDER
-_SYS_BG   = BG_SYSTEM_MSG
-_SYS_TEXT = TEXT_SECONDARY
-_TEXT     = TEXT_PRIMARY
-
-_USER_BG_DK  = ACCENT_LIGHT_DK
-_ASST_BG_DK  = BG_SURFACE_DK
-_ASST_BDR_DK = BORDER_DK
-_SYS_BG_DK   = BG_SYSTEM_MSG_DK
-_SYS_TEXT_DK = TEXT_SECONDARY_DK
-_TEXT_DK     = TEXT_PRIMARY_DK
-
-_FONT                 = "Segoe UI, Inter, Arial"
 _MAX_BUBBLE_WIDTH_RATIO = 0.72
 # Tolerancia (px) para considerar que el usuario sigue "pegado" al fondo.
 _SCROLL_BOTTOM_TOLERANCE = 4
@@ -72,42 +56,10 @@ class MessageBubble(QFrame):
     # Theme
     # ------------------------------------------------------------------
 
-    def _palette(self, theme: str) -> dict:
-        pal = {
-            "light": {
-                "user":      {"bg": _USER_BG,     "text": _TEXT,     "border": ""},
-                "assistant": {"bg": _ASST_BG,     "text": _TEXT,     "border": f"border: 1px solid {_ASST_BDR};"},
-                "system":    {"bg": _SYS_BG,      "text": _SYS_TEXT, "border": ""},
-            },
-            "dark": {
-                "user":      {"bg": _USER_BG_DK,  "text": _TEXT_DK,     "border": ""},
-                "assistant": {"bg": _ASST_BG_DK,  "text": _TEXT_DK,     "border": f"border: 1px solid {_ASST_BDR_DK};"},
-                "system":    {"bg": _SYS_BG_DK,   "text": _SYS_TEXT_DK, "border": ""},
-            },
-        }
-        return pal.get(theme, pal["light"]).get(self._role, pal["light"]["system"])
-
-    _RADII = {
-        "user":      "12px 12px 4px 12px",
-        "assistant": "12px 12px 12px 4px",
-        "system":    "8px",
-    }
-
     def _apply_theme(self, theme: str):
-        c      = self._palette(theme)
-        radii  = self._RADII.get(self._role, "8px")
-
-        self.setStyleSheet(f"""
-            MessageBubble {{
-                background-color: {c["bg"]};
-                {c["border"]}
-                border-radius: {radii};
-            }}
-        """)
-        self.label.setStyleSheet(
-            f"color: {c['text']}; background: transparent; border: none; "
-            f"font-family: {_FONT}; font-size: 13px;"
-        )
+        """Aplica las hojas de burbuja de ``styles`` (Design.md §2.3)."""
+        self.setStyleSheet(chat_bubble_frame_qss(self._role, theme))
+        self.label.setStyleSheet(chat_bubble_label_qss(self._role, theme))
 
     def set_theme(self, theme: str):
         self._theme = theme
@@ -263,19 +215,8 @@ class ChatWidget(QWidget):
         return max(280, int(w * _MAX_BUBBLE_WIDTH_RATIO))
 
     def _apply_theme_style(self, theme: str):
-        chat_bg     = "#0F0F1A" if theme == "dark" else "#F5F5FA"
-        chat_border = "#282848" if theme == "dark" else "#D4D4EC"
-        self.setStyleSheet(f"""
-            ChatWidget {{
-                background-color: {chat_bg};
-                border: 1.5px solid {chat_border};
-                border-radius: 12px;
-            }}
-            QScrollArea {{
-                border: none;
-                background: transparent;
-            }}
-        """)
+        """Marco del chat: hoja única en ``styles`` (Design.md §5.1)."""
+        self.setStyleSheet(chat_frame_qss(theme))
 
     def _is_at_bottom(self) -> bool:
         """Indica si la vista está pegada al final del historial."""

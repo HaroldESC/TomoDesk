@@ -120,6 +120,49 @@ class TestChatWidget:
         assert bubble.label.accessibleName() == "assistant"
         assert bubble.label.accessibleDescription() == "Texto que se debe poder copiar"
 
+    def test_system_bubble_uses_small_font(self, qtbot, mock_i18n):
+        """Design.md §1.2/§2.3: los avisos de sistema van a 11px."""
+        from src.gui.widgets.chat_widget import ChatWidget
+        widget = ChatWidget(i18n=mock_i18n)
+        qtbot.addWidget(widget)
+        widget.add_message("system", "Aviso del sistema")
+
+        bubble = self._first_bubble(widget)
+        assert bubble is not None
+        label_qss = bubble.label.styleSheet()
+        assert "font-size: 11px" in label_qss
+        assert "font-size: 13px" not in label_qss
+        assert '"Segoe UI", "Inter", "Helvetica Neue", Arial, sans-serif' in label_qss
+
+    def test_bubble_sheets_come_from_styles(self, qtbot, mock_i18n):
+        """La burbuja pide su QSS al sistema de diseño, no lo construye."""
+        from src.gui.styles import styles as s
+        from src.gui.widgets.chat_widget import ChatWidget
+        widget = ChatWidget(i18n=mock_i18n, theme="dark")
+        qtbot.addWidget(widget)
+        widget.add_message("assistant", "Hola")
+
+        bubble = self._first_bubble(widget)
+        assert bubble.styleSheet() == s.chat_bubble_frame_qss("assistant", "dark")
+        assert bubble.label.styleSheet() == s.chat_bubble_label_qss("assistant", "dark")
+        assert widget.styleSheet() == s.chat_frame_qss("dark")
+
+    def test_set_theme_reapplies_styles(self, qtbot, mock_i18n):
+        """Cambiar de tema debe repintar el marco y todas las burbujas."""
+        from src.gui.styles import styles as s
+        from src.gui.widgets.chat_widget import ChatWidget
+        widget = ChatWidget(i18n=mock_i18n, theme="light")
+        qtbot.addWidget(widget)
+        widget.add_message("assistant", "Hola")
+
+        widget.set_theme("dark")
+
+        assert widget.styleSheet() == s.chat_frame_qss("dark")
+        bubble = self._first_bubble(widget)
+        assert s.BG_SURFACE_DK in bubble.styleSheet()
+        assert s.BORDER_DK in bubble.styleSheet()
+        assert s.TEXT_PRIMARY_DK in bubble.label.styleSheet()
+
 
 class TestNotesDialog:
     def test_open_and_close(self, qtbot, mock_memory_manager, mock_i18n):

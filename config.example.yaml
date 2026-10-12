@@ -72,6 +72,7 @@ ui:
     custom_path: ''
     show_frame_labels: false
     use_custom: false
+  status_icons: false # iconos (❤ ⚡ ☁ 🔔) en la barra de estado; desactivados por defecto
   theme: dark
 window_sitting:
   enabled: true
