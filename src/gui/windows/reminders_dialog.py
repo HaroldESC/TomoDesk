@@ -1,15 +1,29 @@
 import datetime
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSignalBlocker, Qt
 from PySide6.QtWidgets import (
     QDialog, QHBoxLayout, QLabel, QLineEdit, QListWidget,
     QListWidgetItem, QPushButton, QSpinBox, QVBoxLayout,
 )
 
-from src.gui.utils import force_taskbar_entry
+from src.gui.utils import confirm, force_taskbar_entry
+
+
+def _trigger_time(reminder: dict) -> str:
+    """Fecha del recordatorio sin los segundos, tolerante a valores raros.
+
+    SQLite guarda ``"YYYY-MM-DD HH:MM:SS"``; el listado enseña solo minutos.
+    Si el valor falta o no es texto se muestra vacío en vez de reventar.
+    """
+    raw = reminder.get("trigger_time")
+    if not isinstance(raw, str):
+        return ""
+    return raw[:16]
 
 
 class RemindersDialog(QDialog):
+    """Recordatorios activos con alta por teclado y cancelación confirmada."""
+
     def __init__(self, memory_manager, parent=None, i18n=None, styles=None):
         super().__init__(parent)
         self.memory_manager = memory_manager
@@ -17,6 +31,7 @@ class RemindersDialog(QDialog):
         if styles is None:
             from src.gui.styles.styles import get_style_set
             styles = get_style_set("light")
+        self._reminders: list = []
         self.setWindowTitle(self.i18n.t("dialogs.reminders.title"))
         self.setMinimumSize(500, 360)
         self.setStyleSheet(styles["dialog"])
@@ -24,16 +39,25 @@ class RemindersDialog(QDialog):
         self._load_reminders()
         force_taskbar_entry(self)
 
-    def _setup_ui(self):
+    def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
 
         layout.addWidget(QLabel(self.i18n.t("dialogs.reminders.active_reminders")))
         self.reminder_list = QListWidget()
-        layout.addWidget(self.reminder_list)
+        layout.addWidget(self.reminder_list, stretch=1)
+
+        self.empty_label = QLabel(self.i18n.t("dialogs.reminders.empty"))
+        self.empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.empty_label.setWordWrap(True)
+        self.empty_label.setVisible(False)
+        layout.addWidget(self.empty_label, stretch=1)
 
         layout.addWidget(QLabel(self.i18n.t("dialogs.reminders.new_reminder")))
         self.message_input = QLineEdit()
         self.message_input.setPlaceholderText(self.i18n.t("dialogs.reminders.message_placeholder"))
+        # Escribir el recordatorio y pulsar Enter lo crea: no hace falta ir
+        # hasta el botón con el ratón.
+        self.message_input.returnPressed.connect(self._add_reminder)
         layout.addWidget(self.message_input)
 
         time_layout = QHBoxLayout()
@@ -59,16 +83,33 @@ class RemindersDialog(QDialog):
 
         layout.addLayout(btn_layout)
 
-    def _load_reminders(self):
-        self.reminder_list.clear()
-        reminders = self.memory_manager.list_reminders(active_only=True)
+    def _load_reminders(self) -> None:
+        """Rellena el listado con los recordatorios que siguen activos."""
+        reminders = self.memory_manager.list_reminders(active_only=True) or []
         self._reminders = reminders
-        for r in reminders:
-            item = QListWidgetItem(self.i18n.t("commands.reminder_item", id=r['id'], message=(r.get('message') or '')[:50], time=r['trigger_time'][:16]))
-            item.setData(Qt.UserRole, r['id'])
-            self.reminder_list.addItem(item)
 
-    def _add_reminder(self):
+        blocker = QSignalBlocker(self.reminder_list)
+        self.reminder_list.clear()
+        for r in reminders:
+            item = QListWidgetItem(
+                self.i18n.t(
+                    "commands.reminder_item",
+                    id=r.get('id'),
+                    message=(r.get('message') or '')[:50],
+                    time=_trigger_time(r),
+                )
+            )
+            item.setData(Qt.ItemDataRole.UserRole, r.get('id'))
+            item.setToolTip(r.get('message') or '')
+            self.reminder_list.addItem(item)
+        del blocker
+
+        empty = self.reminder_list.count() == 0
+        self.empty_label.setVisible(empty)
+        self.reminder_list.setVisible(not empty)
+
+    def _add_reminder(self) -> None:
+        """Crea un recordatorio con el mensaje y los minutos escritos."""
         message = self.message_input.text().strip()
         if not message:
             return
@@ -80,12 +121,22 @@ class RemindersDialog(QDialog):
         self.message_input.clear()
         self._load_reminders()
 
-    def _cancel_reminder(self):
+    def _cancel_reminder(self) -> None:
+        """Desactiva el recordatorio seleccionado previa confirmación."""
         current = self.reminder_list.currentItem()
-        if current:
-            reminder_id = current.data(Qt.UserRole)
-            self.memory_manager.deactivate_reminder(reminder_id)
-            self._load_reminders()
+        if current is None:
+            return
+        if not confirm(
+            self,
+            self.i18n,
+            title_key="dialogs.reminders.cancel_confirm_title",
+            body_key="dialogs.reminders.cancel_confirm_body",
+        ):
+            return
+        self.memory_manager.deactivate_reminder(
+            current.data(Qt.ItemDataRole.UserRole)
+        )
+        self._load_reminders()
 
     def showEvent(self, event):
         super().showEvent(event)

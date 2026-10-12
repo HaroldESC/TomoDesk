@@ -2,6 +2,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtWidgets import QMessageBox
 
 
 @pytest.fixture
@@ -21,6 +22,182 @@ def mock_memory_manager():
 @pytest.fixture(autouse=True)
 def ensure_qapp(qapp):
     return qapp
+
+
+def _button_with_text(box, text):
+    """Botón del QMessageBox cuya etiqueta es ``text``.
+
+    ``confirm()`` los añade con ``addButton``, así que no se pueden recuperar
+    por ``StandardButton``.
+    """
+    return next(b for b in box.buttons() if b.text() == text)
+
+
+@pytest.fixture(autouse=True)
+def no_blocking_message_box(monkeypatch):
+    """Ningún test puede abrir un QMessageBox modal real (colgaría la suite).
+
+    Notas, memorias y recordatorios piden confirmación antes de borrar. Por
+    defecto se responde "confirmar" para no cambiar la semántica de los tests
+    que ya existían.
+    """
+    def fake_exec(self):
+        return 0
+
+    monkeypatch.setattr(QMessageBox, "exec", fake_exec)
+    monkeypatch.setattr(
+        QMessageBox,
+        "clickedButton",
+        lambda self: _button_with_text(self, "dialogs.confirm.accept"),
+    )
+
+
+class TestConfirmHelper:
+    """``src.gui.utils.confirm`` nunca lanza y solo acepta con "confirmar"."""
+
+    @staticmethod
+    def _answer(monkeypatch, answer_key):
+        boxes = []
+
+        def fake_exec(self):
+            boxes.append(self)
+            return 0
+
+        monkeypatch.setattr(QMessageBox, "exec", fake_exec)
+        monkeypatch.setattr(
+            QMessageBox,
+            "clickedButton",
+            lambda self: _button_with_text(self, answer_key),
+        )
+        return boxes
+
+    def test_returns_true_with_the_accept_button(self, mock_i18n, monkeypatch):
+        from src.gui.utils import confirm
+
+        self._answer(monkeypatch, "dialogs.confirm.accept")
+
+        assert confirm(
+            None, mock_i18n,
+            title_key="dialogs.notes.delete_confirm_title",
+            body_key="dialogs.notes.delete_confirm_body",
+        ) is True
+
+    def test_returns_false_with_the_cancel_button(self, mock_i18n, monkeypatch):
+        from src.gui.utils import confirm
+
+        self._answer(monkeypatch, "dialogs.confirm.cancel")
+
+        assert confirm(
+            None, mock_i18n,
+            title_key="dialogs.notes.delete_confirm_title",
+            body_key="dialogs.notes.delete_confirm_body",
+        ) is False
+
+    def test_closing_without_answering_is_not_a_confirmation(
+        self, mock_i18n, monkeypatch
+    ):
+        """Esc sobre el diálogo: clickedButton() es None y no se acepta nada."""
+        from src.gui.utils import confirm
+
+        monkeypatch.setattr(QMessageBox, "exec", lambda self: 0)
+        monkeypatch.setattr(QMessageBox, "clickedButton", lambda self: None)
+
+        assert confirm(
+            None, mock_i18n,
+            title_key="dialogs.notes.delete_confirm_title",
+            body_key="dialogs.notes.delete_confirm_body",
+        ) is False
+
+    def test_uses_translated_labels_and_cancel_is_the_default(
+        self, mock_i18n, monkeypatch
+    ):
+        from src.gui.utils import confirm
+
+        boxes = self._answer(monkeypatch, "dialogs.confirm.accept")
+
+        confirm(
+            None, mock_i18n,
+            title_key="dialogs.memories.delete_confirm_title",
+            body_key="dialogs.memories.delete_confirm_body",
+            accept_key="dialogs.confirm.accept",
+            cancel_key="dialogs.confirm.cancel",
+        )
+
+        assert len(boxes) == 1
+        box = boxes[0]
+        assert box.windowTitle() == "dialogs.memories.delete_confirm_title"
+        assert box.text() == "dialogs.memories.delete_confirm_body"
+        cancel = _button_with_text(box, "dialogs.confirm.cancel")
+        accept = _button_with_text(box, "dialogs.confirm.accept")
+        assert box.defaultButton() is cancel
+        assert box.defaultButton() is not accept
+
+    def test_custom_button_labels(self, mock_i18n, monkeypatch):
+        from src.gui.utils import confirm
+
+        boxes = self._answer(monkeypatch, "dialogs.settings.discard_confirm")
+
+        confirm(
+            None, mock_i18n,
+            title_key="dialogs.settings.discard_title",
+            body_key="dialogs.settings.discard_body",
+            accept_key="dialogs.settings.discard_confirm",
+            cancel_key="dialogs.settings.discard_cancel",
+        )
+
+        assert _button_with_text(boxes[0], "dialogs.settings.discard_confirm")
+
+    def test_returns_false_when_the_box_cannot_be_built(self, mock_i18n):
+        """Si el diálogo revienta, la operación destructiva se cancela."""
+        from src.gui.utils import confirm
+
+        with patch("src.gui.utils.QMessageBox", side_effect=RuntimeError("boom")):
+            assert confirm(
+                None, mock_i18n,
+                title_key="dialogs.notes.delete_confirm_title",
+                body_key="dialogs.notes.delete_confirm_body",
+            ) is False
+
+    def test_returns_false_when_exec_raises(self, mock_i18n, monkeypatch):
+        from src.gui.utils import confirm
+
+        def boom(self):
+            raise RuntimeError("sin display")
+
+        monkeypatch.setattr(QMessageBox, "exec", boom)
+
+        assert confirm(
+            None, mock_i18n,
+            title_key="dialogs.reminders.cancel_confirm_title",
+            body_key="dialogs.reminders.cancel_confirm_body",
+        ) is False
+
+    def test_broken_i18n_shows_the_raw_key_instead_of_raising(self, monkeypatch):
+        """Sin traducciones el botón se ve con la clave, pero sigue funcionando."""
+        from src.gui.utils import confirm
+
+        boxes = self._answer(monkeypatch, "dialogs.confirm.accept")
+        broken = MagicMock()
+        broken.t.side_effect = KeyError("sin locale")
+
+        assert confirm(
+            None, broken,
+            title_key="dialogs.notes.unsaved_title",
+            body_key="dialogs.notes.unsaved_body",
+        ) is True
+
+        assert boxes[0].windowTitle() == "dialogs.notes.unsaved_title"
+
+    def test_without_i18n_object_does_not_raise(self, monkeypatch):
+        from src.gui.utils import confirm
+
+        self._answer(monkeypatch, "dialogs.confirm.accept")
+
+        assert confirm(
+            None, None,
+            title_key="dialogs.notes.delete_confirm_title",
+            body_key="dialogs.notes.delete_confirm_body",
+        ) is True
 
 
 class TestChatWidget:

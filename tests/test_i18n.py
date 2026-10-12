@@ -341,6 +341,21 @@ NEW_UI_KEYS = [
     "dialogs.settings.status_icons",
     "dialogs.settings.status_icons_tip",
     "dialogs.settings.download_bytes",
+    # Confirmaciones compartidas y dialogs pequenos (Fase 3, Ola 1).
+    "dialogs.confirm.accept",
+    "dialogs.confirm.cancel",
+    "dialogs.notes.empty",
+    "dialogs.notes.unsaved_title",
+    "dialogs.notes.unsaved_body",
+    "dialogs.notes.delete_confirm_title",
+    "dialogs.notes.delete_confirm_body",
+    "dialogs.memories.empty",
+    "dialogs.memories.no_selection",
+    "dialogs.memories.delete_confirm_title",
+    "dialogs.memories.delete_confirm_body",
+    "dialogs.reminders.empty",
+    "dialogs.reminders.cancel_confirm_title",
+    "dialogs.reminders.cancel_confirm_body",
 ]
 
 

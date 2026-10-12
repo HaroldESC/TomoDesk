@@ -141,6 +141,10 @@
     "mood_value_line": "{var}: {bar} {value:.2f}"
   },
   "dialogs": {
+    "confirm": {
+      "accept": "Confirmar",
+      "cancel": "Cancelar"
+    },
     "notes": {
       "title": "Notas",
       "your_notes": "Tus notas:",
@@ -148,7 +152,12 @@
       "content_label": "Contenido:",
       "save": "Guardar",
       "delete": "Eliminar",
-      "new": "Nueva"
+      "new": "Nueva",
+      "empty": "Todavía no hay notas guardadas.",
+      "unsaved_title": "¿Descartar los cambios?",
+      "unsaved_body": "Hay cambios sin guardar en esta nota. ¿Quieres continuar de todas formas?",
+      "delete_confirm_title": "¿Eliminar esta nota?",
+      "delete_confirm_body": "La nota se eliminará de forma permanente."
     },
     "reminders": {
       "title": "Recordatorios",
@@ -157,13 +166,20 @@
       "message_placeholder": "Mensaje del recordatorio...",
       "minutes_from_now": "Minutos desde ahora:",
       "add": "Añadir recordatorio",
-      "cancel_selected": "Cancelar seleccionado"
+      "cancel_selected": "Cancelar seleccionado",
+      "empty": "No hay recordatorios activos.",
+      "cancel_confirm_title": "¿Cancelar este recordatorio?",
+      "cancel_confirm_body": "El recordatorio dejará de estar activo y no te avisará."
     },
     "memories": {
       "title": "Memorias episódicas",
       "saved_memories": "Memorias guardadas:",
       "delete": "Eliminar seleccionada",
-      "refresh": "Actualizar"
+      "refresh": "Actualizar",
+      "empty": "Todavía no hay memorias guardadas.",
+      "no_selection": "Selecciona una memoria para leerla aquí.",
+      "delete_confirm_title": "¿Eliminar esta memoria?",
+      "delete_confirm_body": "La memoria se eliminará de forma permanente."
     },
     "settings": {
       "title": "Configuración",

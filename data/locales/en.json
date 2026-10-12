@@ -141,6 +141,10 @@
     "mood_value_line": "{var}: {bar} {value:.2f}"
   },
   "dialogs": {
+    "confirm": {
+      "accept": "Confirm",
+      "cancel": "Cancel"
+    },
     "notes": {
       "title": "Notes",
       "your_notes": "Your Notes:",
@@ -148,7 +152,12 @@
       "content_label": "Content:",
       "save": "Save",
       "delete": "Delete",
-      "new": "New"
+      "new": "New",
+      "empty": "You have no notes yet.",
+      "unsaved_title": "Discard your changes?",
+      "unsaved_body": "This note has unsaved changes. Do you want to carry on anyway?",
+      "delete_confirm_title": "Delete this note?",
+      "delete_confirm_body": "This note will be permanently deleted."
     },
     "reminders": {
       "title": "Reminders",
@@ -157,13 +166,20 @@
       "message_placeholder": "Reminder message...",
       "minutes_from_now": "Minutes from now:",
       "add": "Add Reminder",
-      "cancel_selected": "Cancel Selected"
+      "cancel_selected": "Cancel Selected",
+      "empty": "There are no active reminders.",
+      "cancel_confirm_title": "Cancel this reminder?",
+      "cancel_confirm_body": "This reminder will stop being active and you will not be reminded."
     },
     "memories": {
       "title": "Episodic Memories",
       "saved_memories": "Saved Memories:",
       "delete": "Delete Selected",
-      "refresh": "Refresh"
+      "refresh": "Refresh",
+      "empty": "No memories have been saved yet.",
+      "no_selection": "Select a memory to read it here.",
+      "delete_confirm_title": "Delete this memory?",
+      "delete_confirm_body": "This memory will be permanently deleted."
     },
     "settings": {
       "title": "Settings",
