@@ -17,6 +17,26 @@ target tier, not a hard commitment:
 
 ## Released
 
+### v1.8.0
+
+- UI overhaul of the four small dialogs, the chat, the overlay and Settings.
+  The episodic-memory dialog became a list plus read panel, the note editor lost
+  its 100px cap and its silent data loss (Save after "New" overwrote the previous
+  note), and the destructive buttons of all three dialogs enable only when they
+  can act and explain why in a tooltip.
+- Chat: message time in the bubble tooltip, day separators, an animated typing
+  bubble, selectable text and a fixed follow-to-bottom autoscroll.
+- The overlay no longer steals focus or swallows clicks in its transparent
+  margin (its hit area follows the sprite), and the main window remembers its
+  geometry between sessions.
+- Visual layer aligned with `docs/Design.md`: the chat and bubble sheets moved
+  into `styles.py`, an explicit button hierarchy (`danger`, `flat`, one primary
+  per dialog), the §3.3 inline-input geometry, optional status-bar icons
+  (`ui.status_icons`, off by default) isolated in `src/gui/styles/icons.py`, and
+  a test that fails on any hex literal outside `styles.py`.
+- Settings search matches the visible labels and technical aliases, twenty
+  controls gained tooltips, and the small dialogs are keyboard-navigable.
+
 ### v1.7.1
 
 - Fixed the packaged app icon: the "T" is now drawn geometrically instead of
@@ -176,25 +196,26 @@ target tier, not a hard commitment:
 ### Settings and interface
 
 - Redesign Settings to reduce option saturation: progressive disclosure or an
-  advanced mode, stronger grouping and a better search. Sidebar navigation,
-  grouped pages and a search that filters pages/groups shipped in v1.1.0;
-  there is no advanced toggle and the search does not index individual
-  controls. — **Next**
-- Add tooltips and inline help for each control, plus save indicators for
-  automatic summaries and save-on-close. Only two tooltips exist today (both
-  about unavailable platform capabilities) and closing without Save discards
-  changes. — **Next**
+  advanced mode, plus stronger grouping. Sidebar navigation and grouped pages
+  shipped in v1.1.0, and v1.8.0 made the search match row labels and technical
+  aliases; there is still no advanced toggle. — **Next**
+- Add inline help beyond tooltips and a save indicator for automatic summaries.
+  v1.8.0 added tooltips to twenty controls and made closing with pending changes
+  ask for confirmation, but there is no save indicator and many controls are
+  still unexplained. — **Next**
 - Fix the speech-bubble tail when the character is near the left/right screen
   edge. The tail is hardcoded to the horizontal center of the bubble
   (`cx = w / 2.0`) and never receives the character's position. — **Next**
-- Standardize the "loading" affordance (splash, setup, thinking bubble). — **Next**
+- Standardize the "loading" affordance (splash, setup, thinking bubble). The
+  chat gained an animated typing bubble in v1.8.0; the splash and the setup
+  wizard still use their own. — **Next**
 - Expand Help: keyboard shortcuts, a simple initial tutorial and an optional
   advanced (companion-style) tutorial, plus a documentation link. The initial
   tutorial with anchored hints shipped in v1.0.0 and is replayable from
   Settings; the six existing shortcuts are documented nowhere and the About
   dialog links to no site. — **Later**
-- Refactor large GUI modules for maintainability: `settings_dialog.py` (~1700
-  lines), `overlay_window.py` (~580) and `main_window.py` (~510) each mix
+- Refactor large GUI modules for maintainability: `settings_dialog.py` (~2050
+  lines), `overlay_window.py` (~745) and `main_window.py` (~640) each mix
   several unrelated concerns. — **Later**
 - Improve the terminal/console experience and CLI feature parity. Commands
   (`/note`, `/remind`, `/memories`, `/proactive`, `/debug`, ...) are shared

@@ -5,6 +5,98 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-10-15
+
+### Added
+
+- Chat messages carry their time in the bubble tooltip and get a separator when
+  the calendar day changes, and an animated "typing" bubble appears while the
+  reply is pending.
+- The main window remembers its size and position between sessions.
+- Settings search matches the visible row label and language-neutral aliases
+  (`timeout`, `endpoint`, `n_ctx`, `chroma`), so a UI translated into Spanish
+  can still be searched with the English term.
+- Twenty Settings controls that explained nothing now carry a tooltip.
+- The notes, reminders, memories and privacy dialogs can be driven with the
+  keyboard: chained `setTabOrder`, clickable labels and accessible names.
+- The episodic-memory dialog is a list plus a read panel showing stars, source,
+  a locale-formatted timestamp, the full summary and an empty state.
+- Optional status-bar icons behind `ui.status_icons` (off by default), with the
+  emoji map isolated in `src/gui/styles/icons.py`.
+- `src/gui/utils.py::confirm()`, a shared confirmation dialog that returns
+  `False` instead of raising when it cannot be built.
+- A test enforces `docs/Design.md` §5.1: no hex color literals outside
+  `styles.py`.
+
+### Changed
+
+- `styles.py` owns the chat and bubble sheets (`chat_frame_qss`,
+  `chat_bubble_frame_qss`, `chat_bubble_label_qss`, `bubble_style_recipe`,
+  `bubble_input_palette`, `sprite_preview_qss`), so the widgets consume tokens
+  instead of building their own colors; the unquoted `font-family` that kept Qt
+  from resolving Segoe UI is fixed.
+- Button hierarchy follows `docs/Design.md`: the `QPushButton#primary` rule is
+  gone, each dialog has one primary button, destructive actions use `danger`
+  and utility actions use `flat`.
+- Settings combos show translated labels and keep the raw config value in
+  `currentData`, so an unknown value falls back to the first entry.
+- The inline bubble input matches `docs/Design.md` §3.3 (2.5px border, 8px
+  radius, 5px 10px padding, weight 600) and system chat messages are back to
+  11px.
+- Chat text is selectable, and the overlay bubble forwards the wheel to its
+  scrollbar and Ctrl+C to the clipboard.
+- The main window is centered only on its first show, and bubble style, overlay
+  opacity and default position apply live from Settings instead of only at
+  startup.
+
+### Fixed
+
+- Chat autoscroll read a stale scrollbar maximum, so once the history
+  overflowed a new message stayed out of view.
+- The overlay stole the focus of the application the user was typing in and
+  swallowed clicks in its transparent margin. Its hit area now follows the
+  sprite rectangle (press, move, release, double-click and wheel ignore events
+  outside it) and `WA_ShowWithoutActivating` / `WindowDoesNotAcceptFocus` keep
+  it from taking focus, which also stops the accidental wheel zoom.
+- Settings silently lost pending changes: the search box marked the dialog dirty
+  and "Cancel" discarded nothing without asking, and the language was applied
+  before the LLM endpoint was validated.
+- Long content was unreachable: the note editor was capped at 100px and the
+  overlay bubble clipped at 150px behind `WA_TransparentForMouseEvents`.
+- Saving after "New" in the notes dialog overwrote the previous note, because
+  `clearSelection()` does not move the current row; and closing that dialog with
+  the X asked to discard twice, because `QDialog.closeEvent()` calls `reject()`.
+- The destructive buttons of the notes, reminders and memories dialogs were
+  always enabled while their handlers returned silently; they now enable only
+  when they can act and explain what they need in a tooltip (same for Save with
+  an empty title).
+- The memories dialog crashed on a malformed `importance_score` and showed one
+  70-character line per memory with no way to read the rest.
+- The reminder dialog now adds with Enter, confirms before cancelling and
+  tolerates a missing or non-string trigger time; its list is connected to
+  selection changes.
+- The setup wizard and the privacy dialog are centered, honor the configured
+  theme, create a taskbar entry, and the remaining hardcoded strings go through
+  i18n; the input placeholder no longer promises Ctrl+Enter.
+- A phase-1 test asserted an exact pixel under `offscreen` and depended on font
+  metrics that plugin does not load, which would have failed Linux CI; it now
+  compares against the same formula as the code, with a tolerance derived from
+  the real window frame.
+
+### Tests
+
+- The suite grows from 852 to 1453 tests. The notes, reminders and memories
+  dialogs go from a couple of tests each to full coverage, and new tests cover
+  the style sheets, the button hierarchy, keyboard order and accessibility,
+  settings search and tooltips, the overlay hit area and the i18n catalogs.
+
+### Documentation
+
+- `docs/TECHNICAL_SPEC.md` §11 describes the overlay, bubble, chat, main window,
+  small dialogs and Settings as they now behave; `docs/Design.md` gains the
+  button hierarchy (§2.1.1), the §3.3.1 colors and the optional status icons
+  (§5.5); `AGENTS.md` records the status-bar emoji exception.
+
 ## [1.7.1] - 2026-10-11
 
 ### Fixed
@@ -240,3 +332,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.6.0]: https://github.com/HaroldESC/TomoDesk/releases/tag/v1.6.0
 [1.7.0]: https://github.com/HaroldESC/TomoDesk/releases/tag/v1.7.0
 [1.7.1]: https://github.com/HaroldESC/TomoDesk/releases/tag/v1.7.1
+[1.8.0]: https://github.com/HaroldESC/TomoDesk/releases/tag/v1.8.0
