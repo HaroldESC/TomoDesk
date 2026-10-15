@@ -14,11 +14,11 @@ pytestmark = [
 ]
 
 from PySide6.QtCore import Qt, QPoint, QPointF
-from PySide6.QtGui import QWheelEvent
+from PySide6.QtGui import QPainterPath, QWheelEvent
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication
 
-from src.gui.widgets.speech_bubble import SpeechBubble
+from src.gui.widgets.speech_bubble import SpeechBubble, _TAIL_W
 
 
 def _wheel_event(angle_y: int) -> QWheelEvent:
@@ -481,3 +481,89 @@ def test_set_typewriter_interval_ignores_non_positive(qapp, bad):
 
     assert bubble.typewriter_interval_ms == 30
     assert bubble._anim_timer.interval() == 30
+
+
+# ── Cola de la burbuja: apunta al personaje (no siempre al centro) ─────────
+
+def test_tail_is_centered_by_default(qapp):
+    """Sin target, la cola sale del centro horizontal de la burbuja."""
+    bubble = SpeechBubble()
+    bubble.resize(200, 100)
+
+    assert bubble._tail_x is None
+    assert bubble._tail_center() == 100.0
+
+
+def test_set_tail_target_moves_tail(qapp):
+    """El target se guarda y _tail_center() lo devuelve tal cual cuando cabe."""
+    bubble = SpeechBubble()
+    bubble.resize(200, 100)
+
+    bubble.set_tail_target(140)
+
+    assert bubble._tail_x == 140
+    assert bubble._tail_center() == 140
+
+
+def test_tail_target_is_clamped_to_the_safe_body(qapp):
+    """La punta nunca cae sobre la esquina redondeada: se clampea al cuerpo."""
+    bubble = SpeechBubble()
+    bubble.resize(200, 100)
+    r = min(bubble._radius, 200 / 2.0 - _TAIL_W / 2.0)
+
+    bubble.set_tail_target(-999)
+    assert bubble._tail_center() == pytest.approx(r + _TAIL_W / 2.0, abs=0.5)
+
+    bubble.set_tail_target(999)
+    assert bubble._tail_center() == pytest.approx(
+        200 - r - _TAIL_W / 2.0, abs=0.5
+    )
+
+
+def test_tail_target_on_a_degenerate_bubble_falls_back_to_center(qapp):
+    """Burbuja más estrecha que la cola: no hay cuerpo seguro, se centra."""
+    bubble = SpeechBubble()
+    bubble.setMinimumWidth(0)
+    bubble.resize(30, 100)
+    assert bubble.width() == 30
+
+    bubble.set_tail_target(50)
+
+    assert bubble._tail_center() == 15.0
+
+
+def _tail_tip_x(bubble: SpeechBubble) -> float | None:
+    """x del vértice de la punta de la cola en el QPainterPath pintado."""
+    path = bubble._build_path()
+    h = float(bubble.height())
+    target_y = 0.0 if bubble._flipped else h
+    for i in range(path.elementCount()):
+        el = path.elementAt(i)
+        if abs(el.y - target_y) < 1.0 and 1.0 < el.x < float(bubble.width()) - 1.0:
+            return el.x
+    return None
+
+
+def test_build_path_tail_vertex_follows_the_target(qapp):
+    """El vértice de la cola del path coincide con _tail_center()."""
+    bubble = SpeechBubble()
+    bubble.resize(200, 100)
+    bubble.set_tail_target(160)
+
+    cx = bubble._tail_center()
+    tip_x = _tail_tip_x(bubble)
+
+    assert tip_x is not None
+    assert abs(tip_x - cx) < 1.0
+
+
+def test_build_path_tail_vertex_returns_to_centre_when_target_cleared(qapp):
+    """set_tail_target(None) restaura la cola al centro."""
+    bubble = SpeechBubble()
+    bubble.resize(200, 100)
+    bubble.set_tail_target(160)
+    bubble.set_tail_target(None)
+
+    assert bubble._tail_x is None
+    assert bubble._tail_center() == 100.0
+    assert abs(_tail_tip_x(bubble) - 100.0) < 1.0

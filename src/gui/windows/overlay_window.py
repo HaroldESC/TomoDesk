@@ -324,6 +324,9 @@ class OverlayWindow(QWidget):
                     ideal_y = screen.top()
 
         bubble.set_flipped(flipped)
+        # La cola apunta al centro del personaje, expresado en coordenadas
+        # locales de la burbuja (el resto de la burbuja se desplazó al clamp).
+        bubble.set_tail_target(char_rect.center().x() - ideal_x)
         bubble.move(ideal_x, ideal_y)
 
     def resizeEvent(self, event):

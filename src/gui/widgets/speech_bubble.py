@@ -106,6 +106,7 @@ class SpeechBubble(QWidget):
         self._layout.addWidget(self.input_edit)
 
         self._flipped = False
+        self._tail_x: float | None = None
         self._apply_style()
         self._update_margins()
 
@@ -206,6 +207,29 @@ class SpeechBubble(QWidget):
             self._update_margins()
             self.update()
 
+    def set_tail_target(self, x: float | None) -> None:
+        """Fija la x a la que debe apuntar la cola, en coordenadas locales.
+
+        ``None`` devuelve la cola al centro de la burbuja (comportamiento
+        histórico). Cualquier otro valor se clampea al cuerpo seguro de la
+        burbuja para que la punta nunca caiga sobre la esquina redondeada.
+        """
+        if self._tail_x != x:
+            self._tail_x = x
+            self.update()
+
+    def _tail_center(self) -> float:
+        """x local del vértice de la cola, centrada o dirigida al personaje."""
+        w = float(self.width())
+        r = min(self._radius, w / 2.0 - _TAIL_W / 2.0)
+        if self._tail_x is None:
+            return w / 2.0
+        lo = r + _TAIL_W / 2.0
+        hi = w - r - _TAIL_W / 2.0
+        if hi <= lo:
+            return w / 2.0
+        return min(max(self._tail_x, lo), hi)
+
     def adjustSize(self):
         self._update_max_width()
         doc = self.text_edit.document()
@@ -241,7 +265,9 @@ class SpeechBubble(QWidget):
         # Corner radius comes from the style recipe (flat is hard-edged,
         # round is very soft); it is capped so it never eats the tail.
         r  = min(self._radius, w / 2.0 - _TAIL_W / 2.0)
-        cx = w / 2.0
+        # La cola apunta al centro del burbuja por defecto, o al personaje
+        # cuando el overlay le pasa una posición (set_tail_target).
+        cx = self._tail_center()
 
         path = QPainterPath()
         if self._flipped:

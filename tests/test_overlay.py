@@ -534,3 +534,50 @@ class TestOverlayDoesNotStealFocus:
         assert overlay.windowFlags() & Qt.WindowDoesNotAcceptFocus
         assert overlay.focusPolicy() == Qt.NoFocus
         overlay.close()
+
+
+def test_tail_is_centered_when_bubble_is_not_clamped(qapp, stub_memory, i18n, monkeypatch):
+    """Sin clamp de borde, la cola apunta al centro de la burbuja (sobre el personaje)."""
+    overlay = OverlayWindow(stub_memory, i18n, _overlay_config(character_size=150))
+    overlay.move(100, 0)
+    bubble = overlay.bubble
+    bubble.show_text("hola", animate=False)
+    bubble.adjustSize()
+    bubble.show()
+
+    screen = MagicMock()
+    screen.availableGeometry.return_value = QRect(0, 0, 2000, 1200)
+    monkeypatch.setattr(overlay, "screen", lambda: screen)
+
+    overlay._update_bubble_position()
+
+    width = bubble.width()
+    assert bubble._tail_x == pytest.approx(width / 2.0, abs=1)
+    overlay.close()
+
+
+def test_tail_shifts_when_bubble_is_clamped(qapp, stub_memory, i18n, monkeypatch):
+    """Con clamp de borde, la cola apunta al centro del personaje en coordenadas locales."""
+    overlay = OverlayWindow(stub_memory, i18n, _overlay_config(character_size=150))
+    overlay.move(100, 0)
+    bubble = overlay.bubble
+    bubble.show_text("hola", animate=False)
+    bubble.adjustSize()
+    bubble.show()
+
+    # Pantalla estrecha: la burbuja no cabe a la derecha del personaje y se clampea.
+    screen = MagicMock()
+    screen.availableGeometry.return_value = QRect(0, 0, 200, 1200)
+    monkeypatch.setattr(overlay, "screen", lambda: screen)
+
+    overlay._update_bubble_position()
+
+    width = bubble.width()
+    assert bubble._tail_x is not None
+    assert bubble._tail_x != pytest.approx(width / 2.0, abs=1)
+    assert 0 < bubble._tail_x < width
+    # Coincide exactamente con el offset del centro del personaje respecto al borde.
+    assert bubble._tail_x == pytest.approx(
+        overlay.geometry().center().x() - bubble.x(), abs=1
+    )
+    overlay.close()
