@@ -5,6 +5,24 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] - 2026-10-16
+
+### Fixed
+
+- The speech-bubble tail points at the character again. It was hardcoded to the
+  horizontal centre of the bubble (`cx = w / 2`) and never received the
+  character's position, so once the overlay clamped the bubble to the screen
+  edge the tail aimed at empty space. The overlay now passes the character's x
+  to `SpeechBubble.set_tail_target()`, and the tail clamps to the safe body of
+  the bubble so its tip never lands on a rounded corner; away from the edges it
+  stays centred.
+
+### Tests
+
+- New coverage for the tail: centring by default, clamping to both ends, a
+  bubble narrower than the tail, the vertex of the painted `QPainterPath`, and
+  the overlay's clamped and unclamped cases.
+
 ## [1.8.0] - 2026-10-15
 
 ### Added
@@ -333,3 +351,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [1.7.0]: https://github.com/HaroldESC/TomoDesk/releases/tag/v1.7.0
 [1.7.1]: https://github.com/HaroldESC/TomoDesk/releases/tag/v1.7.1
 [1.8.0]: https://github.com/HaroldESC/TomoDesk/releases/tag/v1.8.0
+[1.8.1]: https://github.com/HaroldESC/TomoDesk/releases/tag/v1.8.1

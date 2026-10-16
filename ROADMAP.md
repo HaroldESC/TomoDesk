@@ -17,6 +17,14 @@ target tier, not a hard commitment:
 
 ## Released
 
+### v1.8.1
+
+- The speech-bubble tail points at the character. It was hardcoded to the
+  horizontal centre of the bubble and never received the character's position,
+  so near a screen edge the overlay's clamp left the tail aiming at empty
+  space; the overlay now passes the character's x and the tip clamps to the
+  safe body of the bubble.
+
 ### v1.8.0
 
 - UI overhaul of the four small dialogs, the chat, the overlay and Settings.
@@ -203,11 +211,6 @@ target tier, not a hard commitment:
   v1.8.0 added tooltips to twenty controls and made closing with pending changes
   ask for confirmation, but there is no save indicator and many controls are
   still unexplained. — **Next**
-- Fix the speech-bubble tail when the character is near the left/right screen
-  edge. The tail is hardcoded to the horizontal center of the bubble
-  (`cx = w / 2.0`) and never receives the character's position. Fixed in v1.8.1:
-  the overlay now passes the character's x to `SpeechBubble.set_tail_target()`
-  and the tail clamps to the bubble body so it never lands on a rounded corner. — **Done**
 - Standardize the "loading" affordance (splash, setup, thinking bubble). The
   chat gained an animated typing bubble in v1.8.0; the splash and the setup
   wizard still use their own. — **Next**
